@@ -72,4 +72,6 @@ After the app loads, editing, CSV loading, and downloading work without a networ
 - [Agent context](AGENTS.md): code map and save-format invariants.
 - [Reference engine checks](tests/reference/README.md): fixture provenance and compatibility testing.
 
+Original project code is licensed under the [MIT License](LICENSE). Third-party code retains its original license terms.
+
 This is an independent project, not an official Emuera application. Runtime libraries include React (MIT), encoding-japanese (MIT), and Lucide (ISC). The original Emuera copyright notice and license for the test sources are preserved in [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt).

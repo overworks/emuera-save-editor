@@ -68,8 +68,10 @@ npm run dev
 
 ## 관련 문서와 출처
 
-- [기여 가이드](CONTRIBUTING.ko.md): 개발 환경, 검증, 정적 호스팅.
-- [에이전트 컨텍스트](AGENTS.ko.md): 코드 구조와 저장 형식 보존 규칙.
+- [기여 가이드(영어)](CONTRIBUTING.md): 개발 환경, 검증, 정적 호스팅.
+- [에이전트 컨텍스트(영어)](AGENTS.md): 코드 구조와 저장 형식 보존 규칙.
 - [기준 엔진 검증](tests/reference/README.ko.md): 테스트 자료의 출처와 호환성 검증.
+
+이 프로젝트에서 작성한 코드는 [MIT License](LICENSE)로 제공됩니다. 외부 코드는 각각의 원래 라이선스 조건을 따릅니다.
 
 이 앱은 공식 Emuera 애플리케이션이 아닌 독립 프로젝트입니다. 런타임 라이브러리로 React(MIT), encoding-japanese(MIT), Lucide(ISC)를 사용합니다. 테스트 소스의 원본 Emuera 저작권 고지와 라이선스는 [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt)에 보존했습니다.

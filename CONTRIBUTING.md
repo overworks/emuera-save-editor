@@ -1,7 +1,5 @@
 # Contributing
 
-**English** · [한국어](CONTRIBUTING.ko.md) · [日本語](CONTRIBUTING.ja.md)
-
 This guide covers development and review. See the [README](README.md) for using the app and [AGENTS.md](AGENTS.md) for the code map and format-specific invariants.
 
 ## Development setup
@@ -61,7 +59,7 @@ DOTNET=/absolute/path/to/dotnet npm run test:reference
 
 Fixtures are committed, so ordinary development and `npm test` do not require .NET. Run `npm run fixtures` only when intentionally updating the synthetic test data: it overwrites six save fixtures and `src/assets/demo.sav`. Review those changes and rerun the relevant checks. See [reference engine checks](tests/reference/README.md) for provenance and limitations.
 
-For documentation-only changes, check relative links, commands against `package.json`, and consistency across the three languages. Application tests are not required for prose changes alone. State which checks were run and identify any relevant checks that could not be run.
+For documentation-only changes, check relative links, commands against `package.json`, and consistency across the three languages for README files. Application tests are not required for prose changes alone. State which checks were run and identify any relevant checks that could not be run.
 
 ## Development guidelines
 
@@ -82,16 +80,14 @@ Language precedence is URL, browser preferences, then English. The selector upda
 
 ## Documentation and translations
 
-English is the default and canonical language for maintained project documentation. Keep Korean and Japanese translations alongside each English document:
+English is the default and canonical language for maintained project documentation. Only README files have Korean and Japanese translations. Maintain `AGENTS.md`, `CONTRIBUTING.md`, and other documentation in English.
 
 | Audience | English | Korean | Japanese |
 | --- | --- | --- | --- |
 | Users | [README.md](README.md) | [README.ko.md](README.ko.md) | [README.ja.md](README.ja.md) |
-| Contributors | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md) | [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md) |
-| Coding agents | [AGENTS.md](AGENTS.md) | [AGENTS.ko.md](AGENTS.ko.md) | [AGENTS.ja.md](AGENTS.ja.md) |
 | Reference test maintainers | [tests/reference/README.md](tests/reference/README.md) | [tests/reference/README.ko.md](tests/reference/README.ko.md) | [tests/reference/README.ja.md](tests/reference/README.ja.md) |
 
-Update all three versions together when content changes. Add language-switch links to each document and link to the matching language where a translation exists. Keep commands, file paths, format markers, and actual UI labels unchanged; translated explanations may accompany them. Apply the same convention to new documentation. Preserve third-party source comments and legal notices in their original form.
+Update each README and its two translations together when content changes. Add language-switch links to README files and link to the matching language where a translation exists. Links to `AGENTS.md` and `CONTRIBUTING.md` always point to the English files. Keep commands, file paths, format markers, and actual UI labels unchanged; translated explanations may accompany them. Apply the same convention to new README files. Preserve third-party source comments and legal notices in their original form.
 
 Keep usage, features, privacy, and user-visible limitations in README files; contributor workflows in CONTRIBUTING files; and repository navigation and implementation invariants in AGENTS files. Link between them instead of repeating full sections.
 

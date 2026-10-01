@@ -1,8 +1,6 @@
 # Agent context
 
-**English** · [한국어](AGENTS.ko.md) · [日本語](AGENTS.ja.md)
-
-This is the repository-wide entry point for coding agents. The English file is canonical; its Korean and Japanese siblings mirror it for readers. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation commands, contribution guidelines, and documentation policy. The [README](README.md) is the user guide.
+This is the repository-wide entry point for coding agents, maintained in English. Read [CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation commands, contribution guidelines, and documentation policy. The [README](README.md) is the user guide.
 
 ## Product scope
 
@@ -60,4 +58,4 @@ Use the change-specific checks in [CONTRIBUTING.md](CONTRIBUTING.md). Build befo
 
 The committed fixtures are synthetic. The reference test compares the original C# reader's full value dictionaries before and after edits, so do not replace it with a check that only uses our own codec. Keep `tests/reference/upstream/` sources and their license unchanged; adapters are separate. These checks exercise save-code compatibility, not a running game or every fork.
 
-Keep English documentation and its `.ko.md` / `.ja.md` translations synchronized. Documentation-only changes need link and content checks, not application test reruns. In the handoff, describe observable changes, checks performed, and any remaining compatibility or verification limits.
+Maintain `AGENTS.md` and `CONTRIBUTING.md` in English. Keep README files and their `.ko.md` / `.ja.md` translations synchronized. Documentation-only changes need link and content checks, not application test reruns. In the handoff, describe observable changes, checks performed, and any remaining compatibility or verification limits.

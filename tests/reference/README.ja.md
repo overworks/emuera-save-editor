@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README.ko.md) · **日本語**
 
-ブラウザーの編集機能を、元の Emuera のセーブ読み込み・書き込みコードと比較します。開発手順全体は [CONTRIBUTING.ja.md](../../CONTRIBUTING.ja.md) を参照してください。
+ブラウザーの編集機能を、元の Emuera のセーブ読み込み・書き込みコードと比較します。開発手順全体は [CONTRIBUTING.md（英語）](../../CONTRIBUTING.md) を参照してください。
 
 ## 出典
 

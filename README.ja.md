@@ -68,8 +68,10 @@ npm run dev
 
 ## 関連ドキュメントとクレジット
 
-- [開発・貢献ガイド](CONTRIBUTING.ja.md): 開発環境、検証、静的ホスティング。
-- [エージェント向けコンテキスト](AGENTS.ja.md): コード構成と保存形式を維持するための規則。
+- [開発・貢献ガイド（英語）](CONTRIBUTING.md): 開発環境、検証、静的ホスティング。
+- [エージェント向けコンテキスト（英語）](AGENTS.md): コード構成と保存形式を維持するための規則。
 - [基準エンジンによる検証](tests/reference/README.ja.md): テストデータの出典と互換性検証。
+
+本プロジェクト独自のコードは [MIT License](LICENSE) で提供されます。外部コードには、それぞれ元のライセンス条件が適用されます。
 
 本アプリは独立したプロジェクトであり、Emuera 公式アプリではありません。実行時ライブラリとして React（MIT）、encoding-japanese（MIT）、Lucide（ISC）を使用しています。テストソースに含まれる元の Emuera の著作権表示とライセンスは [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt) に保存しています。

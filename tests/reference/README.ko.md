@@ -2,7 +2,7 @@
 
 [English](README.md) · **한국어** · [日本語](README.ja.md)
 
-브라우저 편집기를 원본 Emuera 세이브 판독기·작성기와 대조하는 검증입니다. 전체 개발 절차는 [CONTRIBUTING.ko.md](../../CONTRIBUTING.ko.md)를 참고하세요.
+브라우저 편집기를 원본 Emuera 세이브 판독기·작성기와 대조하는 검증입니다. 전체 개발 절차는 [CONTRIBUTING.md(영어)](../../CONTRIBUTING.md)를 참고하세요.
 
 ## 출처
 
