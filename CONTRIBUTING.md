@@ -106,6 +106,10 @@ npm run preview
 
 Publish the entire `dist/` directory through an HTTP(S) static host, including all generated assets. The Vite configuration uses `base: './'` for relative asset paths, so the build can be served under a subdirectory. No backend API or routing rewrite rules are required. Verify the bundled sample and Worker in the hosted location. Direct `file://` use and offline reopening through a service worker are not supported.
 
+The [GitHub Pages workflow](.github/workflows/pages.yml) publishes to [Emuera Save Studio](https://overworks.github.io/emuera-save-editor/) when changes are pushed to `main`. It uses Node.js 24, installs locked dependencies with `npm ci`, runs unit tests, builds the app, and runs the Chromium browser suite before uploading `dist/`. Deployment uses the `github-pages` environment. Actions are pinned to commit SHAs; update the SHA and version comment together when upgrading them.
+
+For a fork or new repository, enable **Settings → Pages → Build and deployment → Source → GitHub Actions** once. Push to `main`, or select **Actions → Deploy to GitHub Pages → Run workflow** with `main` selected. The deployment job only publishes `main`. View the run and its deployment URL in Actions. After deployment, open the site at its full repository path and check the sample, save import/edit/download, and language switching. Keep the README links synchronized if the hosting address changes. See the [GitHub Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages) for the hosting requirements.
+
 ## Submitting changes
 
 Keep changes focused. Describe the problem, resulting behavior, relevant compatibility limits, and checks performed. For UI changes, include enough visual evidence to review the behavior. For save-format changes, document the source evidence and add a reproducible synthetic case. Do not describe a successful format check as validation of all games or engine forks.

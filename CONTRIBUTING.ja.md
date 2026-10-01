@@ -106,6 +106,10 @@ npm run preview
 
 生成されたアセットを含む `dist/` ディレクトリ全体を HTTP(S) の静的ホストで公開します。Vite の設定は相対アセットパスのために `base: './'` を使っているので、サブディレクトリからも配信できます。バックエンド API やルーティングの書き換え規則は不要です。公開先で内蔵サンプルと Worker が動くことを確認してください。`file://` での直接実行や、サービスワーカーによるオフラインでの再アクセスには対応していません。
 
+[GitHub Pages ワークフロー](.github/workflows/pages.yml)は、`main` に変更をプッシュすると [Emuera Save Studio](https://overworks.github.io/emuera-save-editor/)に公開します。Node.js 24 で `npm ci` を使ってロックファイルの依存関係をインストールし、ユニットテスト、アプリのビルド、Chromium のブラウザーテストを実行してから `dist/` をアップロードします。デプロイには `github-pages` 環境を使います。Actions はコミット SHA で固定し、更新時には SHA とバージョンのコメントを一緒に変更してください。
+
+フォークや新しいリポジトリでは、**Settings → Pages → Build and deployment → Source → GitHub Actions** を一度設定します。`main` にプッシュするか、**Actions → Deploy to GitHub Pages → Run workflow** で `main` を選んで実行してください。デプロイジョブは `main` だけを公開します。実行結果と公開 URL は Actions で確認できます。公開後はリポジトリのパスを含む URL を開き、サンプル、セーブの読み込み・編集・ダウンロード、言語切り替えを確認してください。公開先が変わった場合は README のリンクも更新します。ホスティングの要件は [GitHub Pages ワークフローのドキュメント](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)を参照してください。
+
 ## 変更の提出
 
 変更の範囲を絞り、問題、変更後の動作、関連する互換性の制限、実施した検証を説明してください。UI の変更には、動作をレビューできる視覚資料を添えます。保存形式の変更では根拠となるソースを記録し、再現可能な架空のケースを追加してください。形式検証の成功を、すべてのゲームやエンジン派生版の検証として説明しないでください。

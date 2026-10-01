@@ -106,6 +106,10 @@ npm run preview
 
 생성된 자산을 포함해 `dist/` 디렉터리 전체를 HTTP(S) 정적 호스팅에 게시합니다. Vite 설정은 상대 자산 경로를 위해 `base: './'`를 사용하므로 하위 경로에서도 제공할 수 있습니다. 백엔드 API나 라우팅 재작성 규칙은 필요하지 않습니다. 호스팅된 위치에서 내장 샘플과 Worker가 동작하는지 확인하세요. `file://` 직접 실행과 서비스 워커를 통한 오프라인 재접속은 지원하지 않습니다.
 
+[GitHub Pages 워크플로](.github/workflows/pages.yml)는 `main`에 변경 사항을 푸시하면 [Emuera Save Studio](https://overworks.github.io/emuera-save-editor/)에 배포합니다. Node.js 24에서 `npm ci`로 잠금 파일의 의존성을 설치하고, 단위 테스트, 앱 빌드, Chromium 브라우저 테스트를 수행한 뒤 `dist/`를 업로드합니다. 배포에는 `github-pages` 환경을 사용합니다. Actions는 커밋 SHA로 고정하며, 업그레이드할 때 SHA와 버전 주석을 함께 갱신합니다.
+
+포크나 새 저장소에서는 **Settings → Pages → Build and deployment → Source → GitHub Actions**를 한 번 설정합니다. `main`에 푸시하거나 **Actions → Deploy to GitHub Pages → Run workflow**에서 `main`을 선택해 실행하세요. 배포 작업은 `main`만 게시합니다. Actions에서 실행 결과와 배포 주소를 확인할 수 있습니다. 배포 후 저장소 경로를 포함한 주소에서 샘플, 세이브 불러오기·편집·다운로드, 언어 전환을 확인하세요. 호스팅 주소가 바뀌면 README 링크도 함께 갱신합니다. 호스팅 요구 사항은 [GitHub Pages 워크플로 문서](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)를 참고하세요.
+
 ## 변경 제출
 
 변경 범위를 집중시키고 문제, 결과 동작, 관련 호환성 제한, 수행한 검증을 설명합니다. UI 변경은 동작을 리뷰할 수 있는 시각 자료를 함께 제공합니다. 저장 형식 변경은 근거가 되는 소스를 기록하고 재현 가능한 가상 사례를 추가합니다. 형식 검증 성공을 모든 게임이나 엔진 포크에 대한 검증으로 설명하지 마세요.

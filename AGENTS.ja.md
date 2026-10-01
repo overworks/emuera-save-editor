@@ -27,6 +27,7 @@ Emuera Save Studio は英語・韓国語・日本語の画面を持つ静的な�
 | [tests/fixtures/](tests/fixtures/) | エンジンで生成した架空のセーブ 6 個と CSV ラベルデータ |
 | [tests/reference/](tests/reference/), [scripts/](scripts/) | 元の C# 保存コード、テストアダプター、データ生成・比較スクリプト |
 | [vite.config.ts](vite.config.ts), [playwright.config.ts](playwright.config.ts) | 相対アセットパス、コアテストの選択、ブラウザープレビューの設定 |
+| [.github/workflows/pages.yml](.github/workflows/pages.yml) | ユニット・ブラウザー検証、本番ビルド、`main` からの GitHub Pages デプロイ |
 | [src/messages.ts](src/messages.ts), [src/i18n.ts](src/i18n.ts), [src/locale.tsx](src/locale.tsx) | バンドル内の翻訳、埋め込み・複数形、URL・ブラウザーによる言語選択、React の言語コンテキスト |
 | [src/core/diagnostic.ts](src/core/diagnostic.ts) | Worker で受け渡す言語に依存しないエラー・警告メッセージ |
 | [tests/i18n.test.ts](tests/i18n.test.ts), [tests/e2e/i18n.spec.ts](tests/e2e/i18n.spec.ts) | 翻訳の完全性、言語選択、切り替え時の作業維持の検証 |

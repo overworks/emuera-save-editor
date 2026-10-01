@@ -27,6 +27,7 @@ Current scope excludes character/variable creation or deletion, array resizing, 
 | [tests/fixtures/](tests/fixtures/) | Six synthetic engine-generated saves and CSV label data |
 | [tests/reference/](tests/reference/), [scripts/](scripts/) | Original C# save code, test adapter, fixture generation, and comparison scripts |
 | [vite.config.ts](vite.config.ts), [playwright.config.ts](playwright.config.ts) | Relative asset base, core test selection, and browser preview setup |
+| [.github/workflows/pages.yml](.github/workflows/pages.yml) | Unit and browser checks, production build, and GitHub Pages deployment from `main` |
 | [src/messages.ts](src/messages.ts), [src/i18n.ts](src/i18n.ts), [src/locale.tsx](src/locale.tsx) | Bundled translations, interpolation/plurals, URL/browser language selection, and React locale context |
 | [src/core/diagnostic.ts](src/core/diagnostic.ts) | Locale-independent error and warning descriptors passed through the Worker |
 | [tests/i18n.test.ts](tests/i18n.test.ts), [tests/e2e/i18n.spec.ts](tests/e2e/i18n.spec.ts) | Translation completeness, locale selection, and state preservation across languages |

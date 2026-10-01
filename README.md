@@ -6,6 +6,8 @@ Read and edit Emuera saves in your browser. The app supports text and binary sav
 
 ## Getting started
 
+[Open Emuera Save Studio](https://overworks.github.io/emuera-save-editor/) in your browser. No installation is required. Choose **Explore sample** to try a synthetic save before opening your own file.
+
 To run the app locally, install Node.js 22.x (22.12 or newer), 24.x, or 26.x and npm, then run these commands from the project directory:
 
 ```sh
@@ -13,7 +15,7 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed in the terminal. Choose **Explore sample** to try a synthetic save before opening your own file. When using a hosted copy of the app, you only need a browser.
+Open the URL printed in the terminal.
 
 Use a recent desktop browser. Browser tests currently cover Chromium at desktop and mobile screen sizes.
 
