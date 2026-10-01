@@ -1,0 +1,111 @@
+# Contributing
+
+**English** · [한국어](CONTRIBUTING.ko.md) · [日本語](CONTRIBUTING.ja.md)
+
+This guide covers development and review. See the [README](README.md) for using the app and [AGENTS.md](AGENTS.md) for the code map and format-specific invariants.
+
+## Development setup
+
+Use Node.js 22.x (22.12 or newer), 24.x, or 26.x with npm. These versions satisfy the current build and test dependencies. Run commands from the repository root:
+
+```sh
+npm ci
+npm run dev
+```
+
+The application uses React, TypeScript, and Vite. Keep dependency changes reflected in both `package.json` and `package-lock.json`. The .NET 8 SDK is optional unless you regenerate fixtures or run the reference engine checks; it is never a runtime requirement for the web app.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Start the development server |
+| `npm test` | Run core tests with Vitest |
+| `npm run build` | Check TypeScript and produce `dist/` |
+| `npm run preview` | Serve the existing `dist/` build locally |
+| `npm run test:e2e` | Run Playwright tests against the preview server |
+| `npm run fixtures` | Regenerate synthetic saves and the bundled demo using the original engine writer; requires .NET 8 |
+| `npm run test:reference` | Compare edited saves with the original engine reader; requires .NET 8 |
+
+There is currently no separate lint or formatting command.
+
+## Choosing checks
+
+For implementation changes, run:
+
+```sh
+npm test
+npm run build
+```
+
+For UI, Worker, file import/export, or asset-loading changes, also run the browser tests. Install Chromium once before the first run:
+
+```sh
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, CSV labels, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
+
+For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
+
+```sh
+npm run test:reference
+```
+
+If `dotnet` is not on `PATH`, set its executable explicitly:
+
+```sh
+DOTNET=/absolute/path/to/dotnet npm run test:reference
+```
+
+Fixtures are committed, so ordinary development and `npm test` do not require .NET. Run `npm run fixtures` only when intentionally updating the synthetic test data: it overwrites six save fixtures and `src/assets/demo.sav`. Review those changes and rerun the relevant checks. See [reference engine checks](tests/reference/README.md) for provenance and limitations.
+
+For documentation-only changes, check relative links, commands against `package.json`, and consistency across the three languages. Application tests are not required for prose changes alone. State which checks were run and identify any relevant checks that could not be run.
+
+## Development guidelines
+
+- Keep format parsing, serialization, encoding, and editing logic in `src/core/`, independent of React and the DOM. Keep file processing in the Worker and use the typed messages in `src/worker.ts` through `src/client.ts`.
+- Preserve exact signed 64-bit values, original bytes outside edited regions, sparse array handling, and validation before export. Follow the detailed invariants in [AGENTS.md](AGENTS.md).
+- Keep user files in browser memory. Maintain the static, browser-only architecture without adding upload services, external runtime assets, analytics, or persistent session storage as incidental dependencies.
+- Follow the surrounding TypeScript style: strict types, two-space indentation, single quotes, and semicolons. Prefer existing abstractions and dependencies where they fit the change.
+- Preserve keyboard navigation, accessible control names, dialog focus, error feedback, and narrow-screen usability. The product UI supports English, Korean, and Japanese; verify translated text at narrow widths too.
+- Add regression coverage for meaningful behavior changes, especially save-format fixes. Use small synthetic examples instead of committing a user's save or game assets. Keep reference comparisons independent of the TypeScript serializer.
+- Preserve the unmodified engine sources and license under `tests/reference/upstream/`. Test host adaptations belong in `tests/reference/Program.cs`. An intentional baseline update must also update its provenance and compatibility documentation.
+- Keep generated build/test output, local configuration, and credentials out of commits. `dist/`, `node_modules/`, `.reference/`, Playwright reports, and .NET build output are ignored; synthetic fixtures and the bundled demo are tracked deliberately.
+
+## Interface translations
+
+Add or update UI text in [src/messages.ts](src/messages.ts). Each entry contains English, Korean, and Japanese in that order; retain matching interpolation parameters and handle English singular/plural forms for counts. Use the locale provider instead of embedding visible text or accessibility labels in components. Keep errors and CSV warnings as structured messages from `src/core/diagnostic.ts` so existing messages can change language without reprocessing a save. Do not translate user data or turn saved 64-bit values into localized numbers.
+
+Language precedence is URL, browser preferences, then English. The selector updates only the `lang` query parameter and does not use persistent browser storage. Keep translation resources bundled for offline switching. Translation changes should pass `npm test`, `npm run build`, and `npm run test:e2e`; the browser suite checks all three languages, state preservation, localized diagnostics, and mobile layouts.
+
+## Documentation and translations
+
+English is the default and canonical language for maintained project documentation. Keep Korean and Japanese translations alongside each English document:
+
+| Audience | English | Korean | Japanese |
+| --- | --- | --- | --- |
+| Users | [README.md](README.md) | [README.ko.md](README.ko.md) | [README.ja.md](README.ja.md) |
+| Contributors | [CONTRIBUTING.md](CONTRIBUTING.md) | [CONTRIBUTING.ko.md](CONTRIBUTING.ko.md) | [CONTRIBUTING.ja.md](CONTRIBUTING.ja.md) |
+| Coding agents | [AGENTS.md](AGENTS.md) | [AGENTS.ko.md](AGENTS.ko.md) | [AGENTS.ja.md](AGENTS.ja.md) |
+| Reference test maintainers | [tests/reference/README.md](tests/reference/README.md) | [tests/reference/README.ko.md](tests/reference/README.ko.md) | [tests/reference/README.ja.md](tests/reference/README.ja.md) |
+
+Update all three versions together when content changes. Add language-switch links to each document and link to the matching language where a translation exists. Keep commands, file paths, format markers, and actual UI labels unchanged; translated explanations may accompany them. Apply the same convention to new documentation. Preserve third-party source comments and legal notices in their original form.
+
+Keep usage, features, privacy, and user-visible limitations in README files; contributor workflows in CONTRIBUTING files; and repository navigation and implementation invariants in AGENTS files. Link between them instead of repeating full sections.
+
+## Static hosting
+
+Build and inspect the production bundle locally:
+
+```sh
+npm run build
+npm run preview
+```
+
+Publish the entire `dist/` directory through an HTTP(S) static host, including all generated assets. The Vite configuration uses `base: './'` for relative asset paths, so the build can be served under a subdirectory. No backend API or routing rewrite rules are required. Verify the bundled sample and Worker in the hosted location. Direct `file://` use and offline reopening through a service worker are not supported.
+
+## Submitting changes
+
+Keep changes focused. Describe the problem, resulting behavior, relevant compatibility limits, and checks performed. For UI changes, include enough visual evidence to review the behavior. For save-format changes, document the source evidence and add a reproducible synthetic case. Do not describe a successful format check as validation of all games or engine forks.

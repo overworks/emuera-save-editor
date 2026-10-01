@@ -1,3 +1,5 @@
+import { messageOf } from './core/diagnostic';
+import { SaveError } from './core/model';
 import { Editor, parseSave } from './core/editor';
 import type { Query } from './core/editor';
 import type { EncodingOption } from './core/model';
@@ -21,7 +23,7 @@ self.onmessage = ({ data }: MessageEvent<{ requestId: number; request: Request }
       editor = next;
       result = editor.summary();
     } else {
-      if (!editor) throw new Error('세이브 파일을 먼저 열어 주세요.');
+      if (!editor) throw new SaveError('error.openFirst');
       switch (request.type) {
         case 'summary': result = editor.summary(); break;
         case 'query': result = editor.query(request.query); break;
@@ -34,5 +36,5 @@ self.onmessage = ({ data }: MessageEvent<{ requestId: number; request: Request }
     }
     if (result instanceof Uint8Array) self.postMessage({ requestId, result }, { transfer: [result.buffer] });
     else self.postMessage({ requestId, result });
-  } catch (error) { self.postMessage({ requestId, error: error instanceof Error ? error.message : String(error) }); }
+  } catch (error) { self.postMessage({ requestId, error: messageOf(error) }); }
 };

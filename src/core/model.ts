@@ -1,3 +1,6 @@
+import { MessageError } from './diagnostic';
+import type { ErrorKey, MessageParams } from './diagnostic';
+
 export type Scalar = bigint | string;
 export type TextEncoding = 'utf-8' | 'shift_jis';
 export type EncodingOption = TextEncoding | 'auto';
@@ -24,9 +27,9 @@ export interface SaveDocument {
   characterCount: number;
   variables: Variable[];
 }
-export class SaveError extends Error {
-  constructor(message: string, position?: number, unit = '바이트') {
-    super(position === undefined ? message : `${message} (${unit} ${position})`);
+export class SaveError extends MessageError {
+  constructor(key: ErrorKey, position?: number, unit: 'byte' | 'line' = 'byte', params: MessageParams = {}) {
+    super({ key, params, location: position === undefined ? undefined : { unit, position } });
     this.name = 'SaveError';
   }
 }
@@ -36,10 +39,10 @@ export const MAX_FILE_BYTES = 64 * 1024 * 1024;
 export const MAX_ARRAY_CELLS = 100_000_000;
 export const MAX_STORED_CELLS = 1_000_000;
 export function integer(input: string): bigint {
-  if (!/^[+-]?\d+$/.test(input.trim())) throw new SaveError('10진 정수를 입력해 주세요.');
-  if (input.trim().replace(/^[+-]?0*/, '').length > 19) throw new SaveError('64비트 정수 범위를 벗어났습니다.');
+  if (!/^[+-]?\d+$/.test(input.trim())) throw new SaveError('error.integer');
+  if (input.trim().replace(/^[+-]?0*/, '').length > 19) throw new SaveError('error.integerRange');
   const value = BigInt(input.trim());
-  if (value < MIN_INT || value > MAX_INT) throw new SaveError('64비트 정수 범위를 벗어났습니다.');
+  if (value < MIN_INT || value > MAX_INT) throw new SaveError('error.integerRange');
   return value;
 }
 export function cellCount(dimensions: number[]): number {
@@ -72,11 +75,11 @@ export function originalValue(v: Variable, key: string): Scalar {
 export function patchBytes(original: Uint8Array, patches: (Span & { bytes: Uint8Array })[]): Uint8Array {
   patches.sort((a, b) => a.start - b.start);
   const size = original.length + patches.reduce((n, p) => n + p.bytes.length - (p.end - p.start), 0);
-  if (size > MAX_FILE_BYTES) throw new SaveError('수정본이 64 MiB 제한을 초과합니다.');
+  if (size > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
   const result = new Uint8Array(size);
   let source = 0, target = 0;
   for (const p of patches) {
-    if (p.start < source || p.end < p.start || p.end > original.length) throw new SaveError('수정 구역이 겹칩니다.');
+    if (p.start < source || p.end < p.start || p.end > original.length) throw new SaveError('error.patchOverlap');
     result.set(original.subarray(source, p.start), target);
     target += p.start - source;
     result.set(p.bytes, target);

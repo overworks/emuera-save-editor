@@ -1,3 +1,5 @@
+import { messageOf } from './diagnostic';
+import type { Message } from './diagnostic';
 import { decodeText, detectEncoding } from './encoding';
 import type { EncodingOption } from './model';
 
@@ -10,15 +12,15 @@ const FAMILIES: Record<string, string[]> = {
 export class Labels {
   entries = new Map<string, Map<string, string>>();
   count = 0;
-  load(files: { name: string; bytes: Uint8Array }[], encoding: EncodingOption): string[] {
-    const warnings: string[] = [];
+  load(files: { name: string; bytes: Uint8Array }[], encoding: EncodingOption): Message[] {
+    const warnings: Message[] = [];
     for (const file of files) {
       const stem = file.name.replace(/^.*[/\\]/, '').replace(/\.csv$/i, '').toLowerCase();
       const targets = Object.hasOwn(FAMILIES, stem) ? FAMILIES[stem] : undefined;
-      if (!targets) { warnings.push(`${file.name}: 이름표 대상이 아니어서 건너뛰었습니다.`); continue; }
+      if (!targets) { warnings.push({ key: 'csv.unsupported', source: { filename: file.name } }); continue; }
       let text: string;
       try { text = decodeText(file.bytes, detectEncoding(file.bytes, encoding)).replace(/^\uFEFF/, ''); }
-      catch (e) { warnings.push(`${file.name}: ${(e as Error).message}`); continue; }
+      catch (e) { warnings.push({ ...messageOf(e), source: { filename: file.name } }); continue; }
       text.split(/\r\n|\n|\r/).forEach((line, index) => {
         // Emuera CSV uses whole-line comments. Semicolons inside names are literal.
         let content = line.trimStart();
@@ -26,7 +28,7 @@ export class Labels {
         if (!content || content.startsWith(';')) return;
         const parts = content.split(',');
         const n = Number(parts[0].trim());
-        if (parts.length < 2 || !/^\s*\+?\d+\s*$/.test(parts[0]) || !Number.isInteger(n) || n > 2147483647) { warnings.push(`${file.name}:${index + 1}: 인덱스를 읽을 수 없습니다.`); return; }
+        if (parts.length < 2 || !/^\s*\+?\d+\s*$/.test(parts[0]) || !Number.isInteger(n) || n > 2147483647) { warnings.push({ key: 'csv.index', source: { filename: file.name, line: index + 1 } }); return; }
         const key = String(n), label = parts[1];
         if (!label) return;
         let conflict = false;
@@ -36,7 +38,7 @@ export class Labels {
           else { group.set(key, label); this.count++; }
           this.entries.set(name, group);
         }
-        if (conflict) warnings.push(`${file.name}:${index + 1}: 중복 인덱스 ${key} — 기존 이름을 유지합니다.`);
+        if (conflict) warnings.push({ key: 'csv.conflict', params: { index: key }, source: { filename: file.name, line: index + 1 } });
       });
     }
     return warnings;

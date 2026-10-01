@@ -2,6 +2,8 @@ import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { Editor, parseSave } from '../../src/core/editor';
 
+test.use({ locale: 'ko-KR' });
+
 test('binary: open, CSV, edit, changes, undo, download, reopen entirely offline', async ({ page, context }) => {
   const externalRequests: string[] = [];
   page.on('request', request => {

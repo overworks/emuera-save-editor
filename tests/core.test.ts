@@ -60,13 +60,13 @@ describe('real engine fixtures', () => {
     expect(sjis.document.encoding).toBe('shift_jis');
     sjis.set(variable(sjis, 'NAME').id, '', '日本語');
     expect(new Editor(parseSave(sjis.serialize(), 'a.sav')).summary().characters[0].name).toBe('日本語');
-    expect(() => sjis.set(variable(sjis, 'NAME').id, '', '한글')).toThrow('인코딩');
+    expect(() => sjis.set(variable(sjis, 'NAME').id, '', '한글')).toThrow('error.encode');
   });
   it('keeps ragged text matrices and edits only represented cells', () => {
     const e = open('normal-text');
     const da = variable(e, 'DA');
     expect(da.values.has('1,0')).toBe(false);
-    expect(() => e.set(da.id, '1,0', '10')).toThrow('범위');
+    expect(() => e.set(da.id, '1,0', '10')).toThrow('error.cellBounds');
     e.set(da.id, '2,0', '20');
     e.set(variable(e, 'TA').id, '2,2,1', '7');
     expect(variable(new Editor(parseSave(e.serialize(), 'save.sav')), 'DA').values.get('2,0')).toBe(20n);
@@ -85,18 +85,18 @@ describe('validation and browsing', () => {
   it('rejects unknown versions, truncated bodies and unsupported file types', () => {
     const raw = fixture('normal-binary');
     for (const cut of [0, 7, 19, 43, raw.length - 1]) expect(() => parseSave(raw.slice(0, cut), 'save.sav')).toThrow();
-    const version = raw.slice(); version[8] = 0; expect(() => parseSave(version, 's')).toThrow('버전');
-    const type = raw.slice(); type[16] = 2; expect(() => parseSave(type, 's')).toThrow('일반 세이브');
-    const extra = new Uint8Array([...raw, 5]); expect(() => parseSave(extra, 's')).toThrow('종료 뒤');
+    const version = raw.slice(); version[8] = 0; expect(() => parseSave(version, 's')).toThrow('error.binaryVersion');
+    const type = raw.slice(); type[16] = 2; expect(() => parseSave(type, 's')).toThrow('error.fileType');
+    const extra = new Uint8Array([...raw, 5]); expect(() => parseSave(extra, 's')).toThrow('error.trailingBinary');
     const text = new TextDecoder().decode(fixture('normal-text')).replace('__EMUERA_1808_STRAT__', '__EMUERA_9999_STRAT__');
-    expect(() => parseSave(new TextEncoder().encode(text), 's')).toThrow('확장');
+    expect(() => parseSave(new TextEncoder().encode(text), 's')).toThrow('error.textExtension');
   });
   it('does not treat inherited property names as format markers or CSV families', () => {
     const base = new TextDecoder().decode(fixture('normal-text')).split('__EMUERA_1808_STRAT__')[0];
     for (const marker of ['constructor', '__proto__', 'toString']) {
       const text = base + marker + '\r\n' + '__EMU_SEPARATOR__\r\n'.repeat(14);
-      expect(() => parseSave(new TextEncoder().encode(text), 'save.sav')).toThrow('확장');
-      expect(new Labels().load([{ name: marker + '.csv', bytes: new TextEncoder().encode('0,name') }], 'auto')[0]).toContain('대상');
+      expect(() => parseSave(new TextEncoder().encode(text), 'save.sav')).toThrow('error.textExtension');
+      expect(new Labels().load([{ name: marker + '.csv', bytes: new TextEncoder().encode('0,name') }], 'auto')[0]).toMatchObject({ key: 'csv.unsupported' });
     }
   });
   it('searches variables, exact indices and CSV names, and filters changes', () => {
@@ -115,7 +115,7 @@ describe('validation and browsing', () => {
     const warnings = labels.load([{ name: 'PALAM.CSV', bytes: encodeText(';comment\n0,体力; note\n0,違う\n1,気力\ninvalid', 'shift_jis') }], 'auto');
     expect(labels.get('JUEL', '0')).toBe('体力; note'); expect(labels.get('PALAM', '1')).toBe('気力');
     expect(warnings).toHaveLength(2);
-    expect(labels.load([{ name: 'chara1.csv', bytes: new Uint8Array() }], 'auto')[0]).toContain('대상');
+    expect(labels.load([{ name: 'chara1.csv', bytes: new Uint8Array() }], 'auto')[0]).toMatchObject({ key: 'csv.unsupported' });
   });
 });
 

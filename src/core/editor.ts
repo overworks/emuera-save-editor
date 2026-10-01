@@ -6,8 +6,8 @@ import { MAX_FILE_BYTES, SaveError, cellCount, coordinates, integer, ordinal, or
 import type { EncodingOption, SaveDocument, Scalar, Variable } from './model';
 
 export function parseSave(bytes: Uint8Array, filename: string, encoding: EncodingOption = 'auto'): SaveDocument {
-  if (!bytes.length) throw new SaveError('빈 파일입니다.');
-  if (bytes.length > MAX_FILE_BYTES) throw new SaveError('64 MiB 이하의 세이브를 선택해 주세요.');
+  if (!bytes.length) throw new SaveError('error.emptyFile');
+  if (bytes.length > MAX_FILE_BYTES) throw new SaveError('error.fileSize');
   return MAGIC.every((b, i) => bytes[i] === b) ? parseBinary(bytes, filename) : parseText(bytes, filename, encoding);
 }
 export interface Row {
@@ -40,23 +40,23 @@ export class Editor {
   }
   private variable(id: number): Variable {
     const v = this.document.variables[id];
-    if (!v) throw new SaveError('변수를 찾을 수 없습니다.');
+    if (!v) throw new SaveError('error.variableMissing');
     return v;
   }
   value(v: Variable, key: string): Scalar { return this.edits.get(v.id)?.get(key) ?? originalValue(v, key); }
   set(id: number, key: string, input: string) {
     const v = this.variable(id);
-    if (ordinal(key, v.dimensions) < 0 || (v.textSpans && !v.textSpans.has(key))) throw new SaveError('저장된 배열 범위를 벗어났습니다.');
-    if (input.length > 1_000_000) throw new SaveError('문자열이 너무 깁니다.');
+    if (ordinal(key, v.dimensions) < 0 || (v.textSpans && !v.textSpans.has(key))) throw new SaveError('error.cellBounds');
+    if (input.length > 1_000_000) throw new SaveError('error.inputLength');
     const value = v.kind === 'int' ? integer(input) : input;
     if (typeof value === 'string' && this.document.format === 'text') {
       if (/[\r\n\0]/.test(value) || value === FINISH || value === SEPARATOR || value.startsWith('__EMUERA_')) {
-        throw new SaveError('텍스트 세이브에는 줄바꿈, NUL 또는 예약 구분자를 넣을 수 없습니다.');
+        throw new SaveError('error.textReserved');
       }
       encodeText(value, this.document.encoding as 'utf-8' | 'shift_jis');
     } else if (typeof value === 'string') {
       // Reject isolated UTF-16 surrogates instead of silently replacing them.
-      if (new TextDecoder().decode(new TextEncoder().encode(value)) !== value) throw new SaveError('올바르지 않은 유니코드 문자열입니다.');
+      if (new TextDecoder().decode(new TextEncoder().encode(value)) !== value) throw new SaveError('error.unicode');
     }
     if (value === originalValue(v, key)) { this.revert(id, key); return; }
     const changes = this.edits.get(id) ?? new Map<string, Scalar>();
@@ -68,9 +68,9 @@ export class Editor {
     if (!changes?.size) this.edits.delete(id);
   }
   scopeName(scope: number) {
-    if (scope === -1) return this.document.fileType === 'global' ? '글로벌 변수' : '공통 변수';
+    if (scope === -1) return '';
     const v = this.characterNames.get(scope);
-    return v ? String(this.value(v, '')) || `캐릭터 ${scope}` : `캐릭터 ${scope}`;
+    return v ? String(this.value(v, '')) : '';
   }
   summary(): Summary {
     const d = this.document;
@@ -142,12 +142,12 @@ export class Editor {
     const result = patchBytes(this.document.original, patches);
     // Validate the exact download, including shape and all logical values. No dense expansion.
     const check = parseSave(result, this.document.filename, this.document.format === 'text' ? this.document.encoding as 'utf-8' | 'shift_jis' : 'auto');
-    if (check.variables.length !== this.document.variables.length) throw new SaveError('수정본 검증에 실패했습니다.');
+    if (check.variables.length !== this.document.variables.length) throw new SaveError('error.exportValidation');
     for (const [i, before] of this.document.variables.entries()) {
       const after = check.variables[i];
-      if (before.name !== after.name || before.scope !== after.scope || before.kind !== after.kind || before.dimensions.join() !== after.dimensions.join()) throw new SaveError('수정본 구조가 달라졌습니다.');
+      if (before.name !== after.name || before.scope !== after.scope || before.kind !== after.kind || before.dimensions.join() !== after.dimensions.join()) throw new SaveError('error.exportStructure');
       const keys = new Set([...before.values.keys(), ...after.values.keys(), ...(this.edits.get(i)?.keys() ?? [])]);
-      for (const key of keys) if (this.value(before, key) !== originalValue(after, key)) throw new SaveError('수정본 값 검증에 실패했습니다.');
+      for (const key of keys) if (this.value(before, key) !== originalValue(after, key)) throw new SaveError('error.exportValues');
     }
     return result;
   }

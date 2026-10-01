@@ -1,3 +1,4 @@
+import { MessageError } from './core/diagnostic';
 import type { Request } from './worker';
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 let sequence = 0;
@@ -5,11 +6,11 @@ const pending = new Map<number, { resolve: (result: unknown) => void; reject: (e
 worker.onmessage = ({ data }) => {
   const handler = pending.get(data.requestId);
   pending.delete(data.requestId);
-  if (data.error) handler?.reject(new Error(data.error));
+  if (data.error) handler?.reject(new MessageError(data.error));
   else handler?.resolve(data.result);
 };
 worker.onerror = () => {
-  pending.forEach(p => p.reject(new Error('파일 처리 중 오류가 발생했습니다. 페이지를 새로 열어 주세요.')));
+  pending.forEach(p => p.reject(new MessageError({ key: 'error.worker' })));
   pending.clear();
 };
 export function rpc<T>(request: Request): Promise<T> {

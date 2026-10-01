@@ -1,3 +1,4 @@
+import type { ErrorKey, MessageParams } from './diagnostic';
 import { MAX_ARRAY_CELLS, MAX_STORED_CELLS, SaveError, cellCount, ordinal } from './model';
 import type { SaveDocument, Scalar, Variable } from './model';
 
@@ -7,8 +8,8 @@ export class BinaryReader {
   storedCells = 0;
   private view: DataView;
   constructor(readonly bytes: Uint8Array) { this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength); }
-  fail(message: string): never { throw new SaveError(message, this.offset); }
-  need(n: number) { if (n < 0 || this.offset + n > this.bytes.length) this.fail('파일이 잘렸거나 길이가 잘못되었습니다.'); }
+  fail(key: ErrorKey, params: MessageParams = {}): never { throw new SaveError(key, this.offset, 'byte', params); }
+  need(n: number) { if (n < 0 || this.offset + n > this.bytes.length) this.fail('error.truncated'); }
   u8() { this.need(1); return this.bytes[this.offset++]; }
   i32() { this.need(4); const n = this.view.getInt32(this.offset, true); this.offset += 4; return n; }
   i64() { this.need(8); const n = this.view.getBigInt64(this.offset, true); this.offset += 8; return n; }
@@ -17,25 +18,25 @@ export class BinaryReader {
     if (tag === 0xd0) { this.need(2); const n = this.view.getInt16(this.offset, true); this.offset += 2; return BigInt(n); }
     if (tag === 0xd1) return BigInt(this.i32());
     if (tag === 0xd2) return this.i64();
-    return this.fail('알 수 없는 정수 태그입니다.');
+    return this.fail('error.integerTag');
   }
   string(): string {
     let size = 0;
     for (let i = 0; i < 5; i++) {
       const b = this.u8();
-      if (i === 4 && b > 7) this.fail('문자열 길이가 잘못되었습니다.');
+      if (i === 4 && b > 7) this.fail('error.stringLength');
       size += (b & 0x7f) * 2 ** (7 * i);
       if (!(b & 0x80)) {
-        if (size % 2) this.fail('UTF-16 문자열 길이가 홀수입니다.');
+        if (size % 2) this.fail('error.utf16Length');
         this.need(size);
         let result: string;
         try { result = new TextDecoder('utf-16le', { fatal: true, ignoreBOM: true }).decode(this.bytes.subarray(this.offset, this.offset + size)); }
-        catch { return this.fail('올바르지 않은 UTF-16 문자열입니다.'); }
+        catch { return this.fail('error.utf16'); }
         this.offset += size;
         return result;
       }
     }
-    return this.fail('문자열 길이 접두사가 잘못되었습니다.');
+    return this.fail('error.lengthPrefix');
   }
 }
 
@@ -60,15 +61,15 @@ export class BinaryWriter {
 }
 
 function readVariable(r: BinaryReader, tag: number, start: number, scope: number, id: number): Variable {
-  if (![0, 1, 2, 3, 16, 17, 18, 19].includes(tag)) r.fail(`지원하지 않는 변수 태그 0x${tag.toString(16)}입니다.`);
+  if (![0, 1, 2, 3, 16, 17, 18, 19].includes(tag)) r.fail('error.variableTag', { tag: tag.toString(16) });
   const name = r.string();
-  if (!name || name.includes('\0')) r.fail('변수 이름이 잘못되었습니다.');
+  if (!name || name.includes('\0')) r.fail('error.variableName');
   const kind = tag & 16 ? 'string' : 'int';
   const dimensions = Array.from({ length: tag & 3 }, () => r.i32());
-  if (dimensions.some(n => n < 0) || !Number.isSafeInteger(cellCount(dimensions)) || cellCount(dimensions) > MAX_ARRAY_CELLS) r.fail('배열 크기가 지원 범위(1억 요소)를 벗어났습니다.');
+  if (dimensions.some(n => n < 0) || !Number.isSafeInteger(cellCount(dimensions)) || cellCount(dimensions) > MAX_ARRAY_CELLS) r.fail('error.arraySize');
   const values = new Map<string, Scalar>();
   if (!dimensions.length) {
-    if (++r.storedCells > MAX_STORED_CELLS) r.fail('저장된 값이 100만 개 제한을 초과합니다.');
+    if (++r.storedCells > MAX_STORED_CELLS) r.fail('error.storedCells');
     values.set('', kind === 'int' ? r.int() : r.string());
   }
   else {
@@ -79,20 +80,20 @@ function readVariable(r: BinaryReader, tag: number, start: number, scope: number
       if ([0xe0, 0xe1, 0xf0, 0xf1, 0xf2].includes(b)) {
         const level = b === 0xf0 ? 0 : b === 0xe0 || b === 0xf1 ? 1 : 2;
         const axis = dimensions.length - 1 - level;
-        if (axis < 0) r.fail('배열 구분자의 차원이 잘못되었습니다.');
+        if (axis < 0) r.fail('error.arraySeparator');
         const run = b >= 0xf0 ? r.int() : 1n;
-        if (run <= 0 || run > BigInt(dimensions[axis])) r.fail('배열 생략 길이가 잘못되었습니다.');
-        if (pos.slice(0, axis).some((n, i) => n >= dimensions[i])) r.fail('배열의 범위를 벗어났습니다.');
+        if (run <= 0 || run > BigInt(dimensions[axis])) r.fail('error.arrayRun');
+        if (pos.slice(0, axis).some((n, i) => n >= dimensions[i])) r.fail('error.arrayBounds');
         // A skipped row/plane must start at its first cell.
-        if (b >= 0xf1 && pos.slice(axis + 1).some(n => n !== 0)) r.fail('빈 배열 시작 위치가 잘못되었습니다.');
+        if (b >= 0xf1 && pos.slice(axis + 1).some(n => n !== 0)) r.fail('error.arrayStart');
         pos[axis] += Number(run);
-        if (pos[axis] > dimensions[axis]) r.fail('배열 생략 길이가 범위를 벗어났습니다.');
+        if (pos[axis] > dimensions[axis]) r.fail('error.arrayRunBounds');
         pos.fill(0, axis + 1);
         continue;
       }
-      if (pos.some((n, i) => n >= dimensions[i])) r.fail('배열 값이 선언된 크기를 초과합니다.');
-      const value = kind === 'int' ? r.int(b) : b === 0xd8 ? r.string() : r.fail('문자열 배열 태그가 잘못되었습니다.');
-      if (++r.storedCells > MAX_STORED_CELLS) r.fail('저장된 값이 100만 개 제한을 초과합니다.');
+      if (pos.some((n, i) => n >= dimensions[i])) r.fail('error.arrayValueBounds');
+      const value = kind === 'int' ? r.int(b) : b === 0xd8 ? r.string() : r.fail('error.stringTag');
+      if (++r.storedCells > MAX_STORED_CELLS) r.fail('error.storedCells');
       values.set(pos.join(','), value);
       pos[pos.length - 1]++;
     }
@@ -102,39 +103,39 @@ function readVariable(r: BinaryReader, tag: number, start: number, scope: number
 
 export function parseBinary(bytes: Uint8Array, filename: string): SaveDocument {
   const r = new BinaryReader(bytes);
-  for (const b of MAGIC) if (r.u8() !== b) r.fail('바이너리 헤더가 잘못되었습니다.');
+  for (const b of MAGIC) if (r.u8() !== b) r.fail('error.binaryHeader');
   const version = r.i32();
-  if (version !== 1808) r.fail(`지원하지 않는 바이너리 버전 ${version}입니다.`);
+  if (version !== 1808) r.fail('error.binaryVersion', { version: String(version) });
   const count = r.i32();
-  if (count < 0) r.fail('확장 헤더 크기가 잘못되었습니다.');
+  if (count < 0) r.fail('error.headerSize');
   r.need(count * 4); r.offset += count * 4;
   const fileType = r.u8();
-  if (fileType > 1) r.fail('일반 세이브와 global.sav만 지원합니다.');
+  if (fileType > 1) r.fail('error.fileType');
   const gameCode = r.i64(), gameVersion = r.i64(), description = r.string();
   const chars = fileType === 0 ? r.i64() : 0n;
-  if (chars < 0 || chars > 100_000n) r.fail('캐릭터 수가 잘못되었습니다.');
+  if (chars < 0 || chars > 100_000n) r.fail('error.characterCount');
   const variables: Variable[] = [];
   let scope = chars > 0 ? 0 : -1;
   let separatorSeen = false;
   for (;;) {
     const start = r.offset, tag = r.u8();
     if (tag === 0xff) {
-      if (scope !== -1) r.fail('캐릭터 데이터가 끝나기 전에 파일이 종료되었습니다.');
+      if (scope !== -1) r.fail('error.characterEnd');
       break;
     }
     if (tag === 0xfe) {
-      if (scope === -1) r.fail('캐릭터 종료 구분자의 위치가 잘못되었습니다.');
+      if (scope === -1) r.fail('error.characterSeparator');
       scope++; separatorSeen = false;
       if (scope === Number(chars)) scope = -1;
     } else if (tag === 0xfd) {
-      if (scope === -1 || separatorSeen) r.fail('변수 구분자의 위치가 잘못되었습니다.');
+      if (scope === -1 || separatorSeen) r.fail('error.variableSeparator');
       separatorSeen = true;
     } else {
-      if (variables.length >= 200_000) r.fail('변수가 너무 많습니다.');
+      if (variables.length >= 200_000) r.fail('error.variableCount');
       variables.push(readVariable(r, tag, start, scope, variables.length));
     }
   }
-  if (r.offset !== bytes.length) r.fail('파일 종료 뒤에 지원하지 않는 데이터가 있습니다.');
+  if (r.offset !== bytes.length) r.fail('error.trailingBinary');
   return { original: bytes, filename, format: 'binary', encoding: 'utf-16le', formatVersion: version,
     fileType: fileType ? 'global' : 'normal', gameCode, gameVersion, description, characterCount: Number(chars), variables };
 }
