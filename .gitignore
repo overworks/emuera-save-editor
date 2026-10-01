@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.playwright-cli/
+.reference/
+tests/reference/obj/
+tests/reference/bin/
+.agents/
+.aws/
+.codex/
+.env
+.env.*
+!.env.example
+.DS_Store
