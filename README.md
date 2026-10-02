@@ -21,6 +21,8 @@ Open the URL printed in the terminal.
 
 Use a recent desktop browser. Browser tests currently cover Chromium at desktop and mobile screen sizes.
 
+The app has three screens, switched from the header: **Start** (open a save or the sample), **Workspace** (once a save is open), and **Guide** (usage, recovery, offline, and limits). Opening the guide keeps your open save and edits; it can be linked directly as `#guide`.
+
 ## 🌐 Language
 
 Use the language selector in the header to switch between **English**, **한국어**, and **日本語**. The app follows your browser's preferred supported language and falls back to English. A language in the URL (`?lang=en`, `?lang=ko`, or `?lang=ja`) takes priority. Selecting a language updates that URL, so the choice survives a refresh and can be bookmarked without cookies or localStorage.
@@ -142,7 +144,7 @@ Recovery uses IndexedDB in the current browser profile and site path; it does no
 
 ## 📴 Offline use and installation
 
-Visit the production app while connected and wait for **Ready to reopen offline** below the recovery controls. This browser can then reopen the app, including its sample and all three languages, without a connection. The first visit needs a connection. Offline access requires HTTPS or localhost and a browser that permits service workers and app storage; the development server does not prepare offline access. Browser data deletion or storage eviction can remove the cached app. Expand **Offline use & installation** to retry preparation or check for updates.
+Visit the production app while connected and wait for **Ready to reopen offline** next to the recovery controls at the bottom of the Start and Workspace screens. This browser can then reopen the app, including its sample and all three languages, without a connection. The first visit needs a connection. Offline access requires HTTPS or localhost and a browser that permits service workers and app storage; the development server does not prepare offline access. Browser data deletion or storage eviction can remove the cached app. Expand **Offline use & installation** to retry preparation or check for updates.
 
 To continue your edits after reopening, enable **Save work in this browser** and wait for **Saved in this browser**. Otherwise, download your edits before closing. Installing the app does not enable recovery, and turning off recovery deletes the saved session while keeping the cached app available.
 

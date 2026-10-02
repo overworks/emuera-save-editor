@@ -87,7 +87,7 @@ test('rejects misplaced and mixed files, preserves byte-identical data, and repl
   await drop(page.locator('.file-bar'), await transfer(page, ['tests/fixtures/normal-binary.sav', 'tests/fixtures/global-text.sav']));
   await expect(page.getByRole('alert')).toContainText('.sav 파일 하나');
   const nextSave = await transfer(page, ['tests/fixtures/global-text.sav']);
-  await drop(page.locator('.workspace-heading'), nextSave);
+  await drop(page.locator('.editor-title'), nextSave);
   await expect(page.getByRole('alert')).toContainText('파일을 세이브 영역에 놓아 주세요');
   await expect(page.locator('.file-details')).toContainText('normal-binary.sav');
   await drop(zone, csv);

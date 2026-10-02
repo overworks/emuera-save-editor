@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ArrowDownToLine, ArrowRight, ArrowUpRight, Braces, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, FileCode2, FilePlus2, FileText, FolderOpen, Hash, Layers3, ListFilter, LoaderCircle, LockKeyhole, Pencil, RotateCcw, Search, ShieldCheck, Table2, Upload, X } from 'lucide-react';
+import { ArrowDownToLine, ArrowRight, ArrowUpRight, BookOpen, Braces, Check, CheckCheck, ChevronLeft, ChevronRight, FileCode2, FilePlus2, FileText, FolderOpen, Hash, Info, Layers3, ListFilter, LoaderCircle, LockKeyhole, Pencil, RotateCcw, Search, ShieldCheck, Table2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { getRecoveryStatus, rpc, subscribeRecovery } from './client';
 import type { RestoredSession } from './worker';
@@ -13,6 +13,8 @@ import { GamePresets, PresetLabel } from './GamePresets';
 import { FileDropZone } from './FileDropZone';
 import { GitHubIcon } from './GitHubIcon';
 import { OfflineApp } from './OfflineApp';
+import { Guide, guideSections } from './Guide';
+import type { GuideSection } from './Guide';
 import { gamePresets, presetReference, presetSearchMatches } from './presets';
 import demoUrl from './assets/demo.sav?url';
 
@@ -21,6 +23,29 @@ const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? 
 const formatEncoding = (encoding: string) => encoding === 'shift_jis' ? 'Shift-JIS / CP932' : encoding.toUpperCase();
 
 const cellName = (row: VariableRow) => row.name + (row.key === '' ? '' : `:${row.key.replace(/,/g, ':')}`);
+type View = { page: 'app' } | { page: 'guide'; section?: GuideSection };
+// The hash keeps the guide reachable offline and leaves the `lang` query untouched.
+function viewOf(hash: string): View {
+  const [page, section] = hash.replace(/^#/, '').split('/');
+  return page === 'guide' ? { page, section: guideSections.find(id => id === section) } : { page: 'app' };
+}
+function useView() {
+  const [view, setView] = useState(() => viewOf(window.location.hash));
+  useEffect(() => {
+    const update = () => setView(viewOf(window.location.hash));
+    window.addEventListener('hashchange', update);
+    window.addEventListener('popstate', update);
+    return () => { window.removeEventListener('hashchange', update); window.removeEventListener('popstate', update); };
+  }, []);
+  function showApp() {
+    if (!window.location.hash) return;
+    const url = new URL(window.location.href); url.hash = '';
+    window.history.pushState(window.history.state, '', url);
+    setView({ page: 'app' }); window.scrollTo(0, 0);
+  }
+  return [view, showApp] as const;
+}
+
 const characterFields = [
   ['NAME', 'csvName'], ['CALLNAME', 'csvCallname'], ['NICKNAME', 'csvNickname'], ['MASTERNAME', 'csvMastername'],
 ] as const;
@@ -49,7 +74,8 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<VariableSummary>();
   const [characterAction, setCharacterAction] = useState<{ type: 'clone' | 'delete'; character: CharacterSummary }>();
-  const [help, setHelp] = useState(false);
+  const [fileInfo, setFileInfo] = useState(false);
+  const [view, showApp] = useView();
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
   const pendingFile = useRef<File | undefined>(undefined);
@@ -197,6 +223,16 @@ export function App() {
     else setEditing(row);
   }
 
+  const browserOptions = <section className="browser-options" aria-label={t('browserOptions')}>
+    <div className="recovery-panel" role="group" aria-label={t('localRecovery')}>
+      <label><input type="checkbox" checked={recoveryChoice ?? recovery.enabled} disabled={!ready || storageBusy || !!busy} onChange={e => void changeRecovery(e.target.checked)} />{t('enableRecovery')}</label>
+      <span className={`recovery-status ${recovery.state === 'error' ? 'failed' : ''}`} role="status">{t(recovery.state === 'saved' ? 'recoverySaved' : recovery.state === 'saving' ? 'recoverySaving' : recovery.state === 'empty' ? 'recoveryEmpty' : recovery.state === 'error' ? 'recoveryFailed' : recovery.state === 'loading' ? 'restoringSession' : 'recoveryOff')}</span>
+      <a className="text-button" href="#guide/recovery">{t('learnMore')}</a>
+      {recovery.error && <div className="recovery-error" role="alert"><span>{message(recovery.error)}</span>{recovery.enabled && summary && <button className="text-button" onClick={() => void retryRecovery()} disabled={storageBusy || !!busy}>{t('retryRecovery')}</button>}</div>}
+    </div>
+    <OfflineApp />
+  </section>;
+
   return <div className="app" onDragOver={e => {
     if (!e.dataTransfer.types.includes('Files')) return;
     e.preventDefault(); e.dataTransfer.dropEffect = 'none';
@@ -205,8 +241,12 @@ export function App() {
     e.preventDefault(); setError({ key: 'error.dropOutside' });
   }}>
     <header className="topbar"><div className="topbar-inner">
-      <a href="./" className="brand" onClick={e => { e.preventDefault(); setHelp(true); }} aria-label={t('helpTitle')}><span className="logo"><Braces size={23} strokeWidth={2.5} /></span><span>Emuera <strong>Save Studio</strong></span><span className="version">BETA</span></a>
-      <div className="top-right"><LanguageSelect /><span className="local-badge"><span className="status-dot" />{t('localOnly')}</span><button className="icon-button" aria-label={t('help')} onClick={() => setHelp(true)}><CircleHelp size={20} /></button></div>
+      <a href="./" className="brand" onClick={e => { e.preventDefault(); showApp(); }}><span className="logo"><Braces size={23} strokeWidth={2.5} /></span><span>Emuera <strong>Save Studio</strong></span><span className="version">BETA</span></a>
+      <nav className="main-nav" aria-label={t('mainNavigation')}>
+        <a href="./" aria-current={view.page === 'app' ? 'page' : undefined} onClick={e => { e.preventDefault(); showApp(); }}>{summary ? <FileCode2 size={16} /> : <FolderOpen size={16} />}{t(summary ? 'navWorkspace' : 'navStart')}</a>
+        <a href="#guide" aria-current={view.page === 'guide' ? 'page' : undefined}><BookOpen size={16} />{t('navGuide')}</a>
+      </nav>
+      <div className="top-right"><LanguageSelect /><span className="local-badge"><span className="status-dot" />{t('localOnly')}</span></div>
     </div></header>
     <input ref={fileInput} type="file" accept=".sav" className="visually-hidden" aria-label={t('selectSave')} disabled={!!busy} onChange={e => { const file = e.target.files?.[0]; if (file) void openFile(file); e.target.value = ''; }} />
     <input ref={csvInput} type="file" accept=".csv" multiple className="visually-hidden" aria-label={t('selectCsv')} disabled={!summary || !!busy} onChange={e => { void loadLabels([...(e.target.files ?? [])]); e.target.value = ''; }} />
@@ -216,15 +256,8 @@ export function App() {
       {busy && <div className="message loading"><LoaderCircle size={17} className="spin" />{t(busy)}…</div>}
     </div>
     <main>
-      <section className="recovery-panel" aria-label={t('localRecovery')}>
-        <div className="recovery-description"><strong>{t('localRecovery')}</strong><p>{t('recoveryHint')}</p></div>
-        <div className="recovery-controls"><label><input type="checkbox" checked={recoveryChoice ?? recovery.enabled} disabled={!ready || storageBusy || !!busy} onChange={e => void changeRecovery(e.target.checked)} />{t('enableRecovery')}</label>
-          <span className={`recovery-status ${recovery.state === 'error' ? 'failed' : ''}`} role="status">{t(recovery.state === 'saved' ? 'recoverySaved' : recovery.state === 'saving' ? 'recoverySaving' : recovery.state === 'empty' ? 'recoveryEmpty' : recovery.state === 'error' ? 'recoveryFailed' : recovery.state === 'loading' ? 'restoringSession' : 'recoveryOff')}</span>
-        </div>
-        {recovery.error && <div className="recovery-error" role="alert"><span>{message(recovery.error)}</span>{recovery.enabled && summary && <button className="text-button" onClick={() => void retryRecovery()} disabled={storageBusy || !!busy}>{t('retryRecovery')}</button>}</div>}
-      </section>
-      <OfflineApp />
-      {!summary ? <section className="welcome">
+      {view.page === 'guide' ? <Guide section={view.section} hasSave={!!summary} onBack={showApp} />
+      : !summary ? <section className="welcome">
         <div className="welcome-intro"><div className="eyebrow"><span />{t('welcomeEyebrow')}</div>
           <h1>{t('welcomeTitle')}<br /><span>{t('welcomeAccent')}</span></h1>
           <p>{t('welcomeIntro')}<br />{t('welcomeDetail')}</p>
@@ -244,9 +277,10 @@ export function App() {
           <div className="demo-link"><span>{t('tryFirst')}</span><button onClick={() => void demo()} disabled={!!busy}>{t('exploreSample')}<ArrowUpRight size={14} /></button></div>
         </div>
         <div className="features"><Feature icon={Layers3} number="01" title={t('formatsTitle')} text={t('formatsDetail')} /><Feature icon={Table2} number="02" title={t('labelsTitle')} text={t('labelsDetail')} /><Feature icon={CheckCheck} number="03" title={t('changesTitle')} text={t('changesDetail')} /></div>
+        {browserOptions}
       </section> : <section className="workspace">
-        <div className="workspace-heading"><div><div className="eyebrow">{t('workspaceEyebrow')}</div><h1>{t('editorTitle')}</h1><p>{t('editorSubtitle')}</p></div><button className="button secondary" onClick={() => fileInput.current?.click()} disabled={!!busy}><FolderOpen size={17} />{t('openAnother')}</button></div>
-        <FileDropZone className="file-bar" label={t('dropSave')} disabled={!!busy} onFiles={dropSave}><span className="file-icon"><FileCode2 size={23} /></span><div className="file-details"><strong>{summary.filename}</strong><span>{size(summary.bytes)}<i />{summary.format === 'binary' ? t('binary') : t('text')}<i />{formatEncoding(summary.encoding)}</span><small className="file-drop-hint">{t('replaceSaveHint')}</small></div><span className="read-badge"><Check size={14} />{t('loaded')}</span><button className="icon-button" title={t('fileInfo')} aria-label={t('fileInfo')} onClick={() => setHelp(true)}><CircleHelp size={18} /></button></FileDropZone>
+        <h1 className="visually-hidden">{t('editorTitle')}</h1>
+        <FileDropZone className="file-bar" label={t('dropSave')} disabled={!!busy} onFiles={dropSave}><span className="file-icon"><FileCode2 size={23} /></span><div className="file-details"><strong>{summary.filename}</strong><span>{size(summary.bytes)}<i />{summary.format === 'binary' ? t('binary') : t('text')}<i />{formatEncoding(summary.encoding)}</span><small className="file-drop-hint">{t('replaceSaveHint')}</small></div><span className="read-badge"><Check size={14} />{t('loaded')}</span><button className="icon-button" title={t('fileInfo')} aria-label={t('fileInfo')} onClick={() => setFileInfo(true)}><Info size={18} /></button><button className="button secondary small" onClick={() => fileInput.current?.click()} disabled={!!busy}><FolderOpen size={15} />{t('openAnother')}</button></FileDropZone>
         <div className="editor-layout"><aside className="sidebar">
           <div className="sidebar-label">{t('browse')}</div><button className={`nav-item ${scope === 'all' ? 'selected' : ''}`} onClick={() => chooseScope('all')}><Layers3 size={17} />{t('allVariables')}<span>{number(summary.variables.filter(v => !v.deleted).length)}</span></button>
           <button className={`nav-item ${scope === -1 ? 'selected' : ''}`} onClick={() => chooseScope(-1)}><Braces size={18} />{summary.fileType === 'global' ? t('globalVariables') : t('sharedVariables')}<span>{number(summary.variables.filter(v => v.scope === -1 && !v.deleted).length)}</span></button>
@@ -287,6 +321,7 @@ export function App() {
         </div></div>
         {warnings.length > 0 && <details className="csv-warnings"><summary>{t('csvWarnings', { count: warnings.length })}</summary><ul>{warnings.slice(0, 100).map((w, i) => <li key={i}>{message(w)}</li>)}</ul>{warnings.length > 100 && <p>{t('firstWarnings')}</p>}</details>}
         <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.addedCharacters || summary.deletedCharacters ? <>{t('characterChanges', { added: summary.addedCharacters, deleted: summary.deletedCharacters })}<small>{t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables })}</small></> : summary.addedVariables || summary.deletedVariables ? t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables }) : summary.resizedArrays ? t('changesWithResizes', { values: summary.valueChanges, arrays: summary.resizedArrays }) : summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
+        {browserOptions}
       </section>}
     </main>
     <footer>
@@ -310,16 +345,9 @@ export function App() {
       } else { setSummary(await rpc<Summary>({ type: 'deleteCharacter', scope: characterAction.character.scope })); chooseScope(-1); }
       setCharacterAction(undefined);
     }} />}
-    {help && <Modal onClose={() => setHelp(false)} title={summary ? t('fileHelpTitle') : t('helpTitle')}><div className="help-content">
-      {summary && <dl><dt>{t('fileFormat')}</dt><dd>{summary.format === 'binary' ? t('binary') : t('text')} · {summary.formatVersion || t('legacyFormat')}</dd><dt>{t('gameVersion')}</dt><dd>{summary.gameCode} / {summary.gameVersion}</dd><dt>{t('saveDescription')}</dt><dd>{summary.description || t('none')}</dd><dt>{t('encoding')}</dt><dd>{formatEncoding(summary.encoding)}</dd></dl>}
-      <ol><li>{t('helpOpen')}</li><li>{t('helpEdit')}</li><li>{t('helpDownload')}</li></ol>
-      <p>{t('helpLabels')}</p>
-      <p>{t('helpCsvMetadata')}</p>
-      <p>{t('helpEncoding')}</p>
-      <p>{t('helpResize')}</p>
-      <p>{t('helpVariables')}</p>
-      <p>{t('helpCharacters')}</p>
-      <p className="help-note">{t('helpLimits')}</p>
+    {fileInfo && summary && <Modal onClose={() => setFileInfo(false)} title={t('fileInfo')}><div className="help-content">
+      <dl><dt>{t('fileFormat')}</dt><dd>{summary.format === 'binary' ? t('binary') : t('text')} · {summary.formatVersion || t('legacyFormat')}</dd><dt>{t('gameVersion')}</dt><dd>{summary.gameCode} / {summary.gameVersion}</dd><dt>{t('saveDescription')}</dt><dd>{summary.description || t('none')}</dd><dt>{t('encoding')}</dt><dd>{formatEncoding(summary.encoding)}</dd></dl>
+      <a className="text-button" href="#guide" onClick={() => setFileInfo(false)}><BookOpen size={15} />{t('openGuide')}</a>
     </div></Modal>}
   </div>;
 }

@@ -21,7 +21,8 @@ Current scope excludes character creation without copying, fixed-order text base
 | [src/presets.ts](src/presets.ts), [src/GamePresets.tsx](src/GamePresets.tsx), [docs/game-presets.md](docs/game-presets.md) | Versioned game field guides, localized metadata, scope-aware shortcuts, and pinned source evidence |
 | [src/worker.ts](src/worker.ts), [src/client.ts](src/client.ts) | Worker-owned editor and request-ID-based message interface |
 | [src/core/session.ts](src/core/session.ts), [src/recovery.ts](src/recovery.ts), [tests/session.test.ts](tests/session.test.ts), [tests/e2e/recovery.spec.ts](tests/e2e/recovery.spec.ts) | Validated recovery journal, transactional IndexedDB storage, opt-in recovery and failure checks |
-| [src/App.tsx](src/App.tsx), [src/styles.css](src/styles.css) | File workflow, responsive editor, dialogs, and localized UI |
+| [src/App.tsx](src/App.tsx), [src/styles.css](src/styles.css) | Start/workspace screens, hash-based view switching, file workflow, responsive editor, dialogs, and localized UI |
+| [src/Guide.tsx](src/Guide.tsx) | In-app guide screen (`#guide`, `#guide/<section>`) built from translated help messages |
 | [src/FileDropZone.tsx](src/FileDropZone.tsx), [tests/e2e/file-drop.spec.ts](tests/e2e/file-drop.spec.ts) | Separate save/CSV drop areas, multiple CSV imports, and drag feedback |
 | [scripts/build-offline.ts](scripts/build-offline.ts), [scripts/offline-worker.js](scripts/offline-worker.js), [src/pwa.ts](src/pwa.ts), [src/OfflineApp.tsx](src/OfflineApp.tsx), [tests/e2e/offline.spec.ts](tests/e2e/offline.spec.ts) | Verified app precache, scoped offline entry points, installation, update notices, and offline/browser restart checks |
 | [src/assets/demo.sav](src/assets/demo.sav) | Synthetic demo imported as a bundled asset using `?url` |

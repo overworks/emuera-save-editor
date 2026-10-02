@@ -10,9 +10,8 @@ export function OfflineApp() {
     <details className="offline-details">
       <summary><span aria-live="polite">{t(status.phase === 'ready' ? 'offlineReady' : status.phase === 'preparing' ? 'offlinePreparing' : status.phase === 'unavailable' ? 'offlineUnavailable' : 'offlineFailed')}</span><span className="offline-more">{t('offlineApp')}</span></summary>
       <div className="offline-description">
-        <p>{t('offlineHint')}</p><p>{t('offlineRecoveryHint')}</p>
-        {!status.installed && <p>{t('installHint')}</p>}
         {status.phase === 'unavailable' && <p>{t('offlineRequirements')}</p>}
+        <a className="text-button" href="#guide/offline">{t('learnMore')}</a>
         {status.phase !== 'unavailable' && <button className="text-button" disabled={status.checking || status.phase === 'preparing'} onClick={() => void checkOffline(status.phase === 'error')}><RefreshCw size={14} className={status.checking ? 'spin' : undefined} />{t(status.phase === 'error' ? 'retryOffline' : 'checkForUpdate')}</button>}
       </div>
     </details>

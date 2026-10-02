@@ -3,9 +3,9 @@ import { readFileSync } from 'node:fs';
 import { parseSave } from '../../src/core/editor';
 
 const languages = [
-  { locale: 'en-US', lang: 'en', label: 'Language', title: 'Open your save.', open: 'Select save file', search: 'Search variables', edit: 'Edit GLOBAL:0', value: 'New value', apply: 'Apply change', invalid: 'signed 64-bit', changed: '1 value changed', download: 'Download save', sample: 'Explore sample', help: 'Help', helpTitle: 'File information and help', close: 'Close', money: 'Edit MONEY:0' },
-  { locale: 'ko-KR', lang: 'ko', label: '언어', title: '세이브를 열고,', open: '세이브 파일 선택', search: '변수 검색', edit: 'GLOBAL:0 값 수정', value: '새로운 값', apply: '변경 적용', invalid: '64비트', changed: '1개 값 변경됨', download: '세이브 다운로드', sample: '샘플로 둘러보기', help: '사용 안내', helpTitle: '파일 정보와 사용 안내', close: '닫기', money: 'MONEY:0 값 수정' },
-  { locale: 'ja-JP', lang: 'ja', label: '言語', title: 'セーブを開いて、', open: 'セーブファイルを選択', search: '変数を検索', edit: 'GLOBAL:0 を編集', value: '新しい値', apply: '変更を適用', invalid: '64 ビット', changed: '1 個の値を変更', download: 'セーブをダウンロード', sample: 'サンプルを見る', help: '使い方', helpTitle: 'ファイル情報と使い方', close: '閉じる', money: 'MONEY:0 を編集' },
+  { locale: 'en-US', lang: 'en', label: 'Language', title: 'Open your save.', open: 'Select save file', search: 'Search variables', edit: 'Edit GLOBAL:0', value: 'New value', apply: 'Apply change', invalid: 'signed 64-bit', changed: '1 value changed', download: 'Download save', sample: 'Explore sample', guide: 'Guide', guideTitle: 'Save Studio guide', fileInfo: 'File information', close: 'Close', money: 'Edit MONEY:0' },
+  { locale: 'ko-KR', lang: 'ko', label: '언어', title: '세이브를 열고,', open: '세이브 파일 선택', search: '변수 검색', edit: 'GLOBAL:0 값 수정', value: '새로운 값', apply: '변경 적용', invalid: '64비트', changed: '1개 값 변경됨', download: '세이브 다운로드', sample: '샘플로 둘러보기', guide: '문서', guideTitle: 'Save Studio 사용 안내', fileInfo: '파일 정보', close: '닫기', money: 'MONEY:0 값 수정' },
+  { locale: 'ja-JP', lang: 'ja', label: '言語', title: 'セーブを開いて、', open: 'セーブファイルを選択', search: '変数を検索', edit: 'GLOBAL:0 を編集', value: '新しい値', apply: '変更を適用', invalid: '64 ビット', changed: '1 個の値を変更', download: 'セーブをダウンロード', sample: 'サンプルを見る', guide: 'ガイド', guideTitle: 'Save Studio の使い方', fileInfo: 'ファイル情報', close: '閉じる', money: 'MONEY:0 を編集' },
 ] as const;
 const resizeLabels = {
   en: { group: 'Variable group', resize: 'Resize array', first: 'Dimension 1 length' },
@@ -46,8 +46,12 @@ for (const language of languages) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
       await expect(page.getByRole('combobox', { name: language.label, exact: true })).toBeVisible();
       await page.getByRole('button', { name: language.sample, exact: true }).click();
-      await page.getByRole('button', { name: language.help, exact: true }).click();
-      await expect(page.getByRole('dialog', { name: language.helpTitle })).toBeVisible();
+      await page.getByRole('link', { name: language.guide, exact: true }).click();
+      await expect(page.getByRole('heading', { name: language.guideTitle, exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+      await page.goBack();
+      await page.getByRole('button', { name: language.fileInfo, exact: true }).click();
+      await expect(page.getByRole('dialog', { name: language.fileInfo })).toBeVisible();
       await page.getByRole('button', { name: language.close, exact: true }).click();
       await page.getByLabel(language.search, { exact: true }).fill('MONEY');
       await page.getByRole('button', { name: language.money, exact: true }).click();
