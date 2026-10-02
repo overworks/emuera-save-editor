@@ -36,8 +36,10 @@ test('binary variables: add in both scopes, delete, export, reset exactly and re
   await dialog.getByLabel('값 자료형').selectOption('string');
   await dialog.getByLabel('배열 차원 수').selectOption('0');
   await dialog.getByRole('button', { name: '변수 추가', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
   await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'ABL (5)' });
   await page.getByRole('button', { name: '변수 삭제', exact: true }).click();
+  await expect(dialog.locator('.edit-meta code')).toHaveText('ABL');
   await expect(dialog.getByRole('button', { name: '취소', exact: true })).toBeFocused();
   await dialog.getByRole('button', { name: '변수 삭제', exact: true }).click();
   await page.getByRole('button', { name: /변경 내역/ }).click();
