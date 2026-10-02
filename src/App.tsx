@@ -15,6 +15,9 @@ const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? 
 const formatEncoding = (encoding: string) => encoding === 'shift_jis' ? 'Shift-JIS / CP932' : encoding.toUpperCase();
 
 const cellName = (row: Row) => row.name + (row.key === '' ? '' : `:${row.key.replace(/,/g, ':')}`);
+const characterFields = [
+  ['NAME', 'csvName'], ['CALLNAME', 'csvCallname'], ['NICKNAME', 'csvNickname'], ['MASTERNAME', 'csvMastername'],
+] as const;
 
 export function App() {
   const { t, message, number } = useLocale();
@@ -47,7 +50,7 @@ export function App() {
       setQuerying(true);
       rpc<Page>({ type: 'query', query: { scope, variableId, search, changedOnly, page } })
         .then(result => { if (active) setResults(result); })
-        .catch(e => { if (active) setError(messageOf(e)); })
+        .catch(e => { if (active) { setError(messageOf(e)); setResults(emptyPage); } })
         .finally(() => { if (active) setQuerying(false); });
     }, 120);
     return () => { active = false; clearTimeout(timer); };
@@ -114,6 +117,8 @@ export function App() {
   const title = scope === 'all' ? t('allVariables') : scopeName(scope, summary?.characters.find(c => c.scope === scope)?.name);
   const selectedVariables = summary?.variables.filter(v => scope === 'all' || v.scope === scope) ?? [];
   const selectedVariable = selectedVariables.find(v => v.id === variableId);
+  const characterCsv = summary?.characters.find(c => c.scope === scope)?.csv;
+  const hasCsv = !!summary && summary.labels + summary.characterLabels + summary.renames > 0;
   function editRow(row: Row) {
     if (row.type === 'resize') setResizing(summary?.variables.find(v => v.id === row.variableId));
     else setEditing(row);
@@ -164,13 +169,15 @@ export function App() {
         <div className="editor-layout"><aside className="sidebar">
           <div className="sidebar-label">{t('browse')}</div><button className={`nav-item ${scope === 'all' ? 'selected' : ''}`} onClick={() => chooseScope('all')}><Layers3 size={17} />{t('allVariables')}<span>{number(summary.variables.length)}</span></button>
           <button className={`nav-item ${scope === -1 ? 'selected' : ''}`} onClick={() => chooseScope(-1)}><Braces size={18} />{summary.fileType === 'global' ? t('globalVariables') : t('sharedVariables')}<span>{number(summary.variables.filter(v => v.scope === -1).length)}</span></button>
-          {summary.characters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(summary.characters.length)}</span></div><div className="character-list">{summary.characters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.scope} · NO {c.no}</small></span></button>)}</div></>}
-          <div className="labels-card"><span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong><p>{summary.labels ? t('labelCount', { count: summary.labels }) : t('labelsHint')}</p><button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{summary.labels ? t('addLabels') : t('loadCsv')}</button></div>
+          {summary.characters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(summary.characters.length)}</span></div><div className="character-list">{summary.characters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.scope} · NO {c.no}</small>{c.csv && <small title={c.csv.filename}>CSV · {c.csv.fields.NAME || c.csv.fields.CALLNAME || c.csv.fields.NICKNAME || c.csv.filename}</small>}</span></button>)}</div></>}
+          <div className="labels-card"><span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong><p className="csv-counts">{hasCsv ? <>{summary.labels > 0 && <span>{t('labelCount', { count: summary.labels })}</span>}{summary.characterLabels > 0 && <span>{t('characterCsvCount', { count: summary.characterLabels })}</span>}{summary.renames > 0 && <span>{t('renameCount', { count: summary.renames })}</span>}</> : t('labelsHint')}</p><button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{hasCsv ? t('addLabels') : t('loadCsv')}</button></div>
           <label className="sidebar-encoding">{t('readEncoding')}<select value={encoding} onChange={e => setEncoding(e.target.value as EncodingOption)}><EncodingOptions /></select></label>
           {summary.format === 'text' && <button className="text-button reread" disabled={!!busy} onClick={() => lastFile.current && void openFile(lastFile.current)}>{t('reread')}</button>}
         </aside><div className="editor-main">
           <div className="editor-title"><div><h2>{title}</h2><span>{t('variableCount', { count: selectedVariables.length })}</span></div><div className="segmented"><button className={!changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(false); setPage(0); }}>{t('showAll')}</button><button className={changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(true); chooseScope('all'); }}>{t('changes')} <span>{number(summary.changes)}</span></button></div></div>
+          {characterCsv && <details className="character-csv"><summary>{t('characterCsv')} <span>{characterCsv.filename}</span></summary><dl>{characterFields.map(([field, label]) => characterCsv.fields[field] && <div key={field}><dt>{t(label)} <code>{field}</code></dt><dd>{characterCsv.fields[field]}</dd></div>)}</dl><p>{t('characterCsvHint', { no: characterCsv.no })}</p></details>}
           <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${v.scope}` : ''} ({number(v.count)})</option>)}</select></div></div>
+          {results.expandedSearch !== undefined && <p className="search-expansion">{t('searchExpanded')} <code>{results.expandedSearch || t('emptyString')}</code></p>}
           {summary.format === 'binary' && !!selectedVariable?.dimensions.length && <div className="array-toolbar"><span>{t('arraySize')} <code>{selectedVariable.dimensions.join(' × ')}</code></span><button className="button secondary small" onClick={() => setResizing(selectedVariable)} disabled={!!busy || querying}>{t('resizeArray')}</button></div>}
           <div className="data-table-wrap" aria-busy={querying}><table className="data-table"><thead><tr><th>{t('variableIndex')}</th><th>{t('label')}</th><th>{changedOnly ? t('beforeAfter') : t('currentValue')}</th><th><span className="visually-hidden">{t('edit')}</span></th></tr></thead><tbody>
             {results.rows.map(row => <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
@@ -193,6 +200,7 @@ export function App() {
       {summary && <dl><dt>{t('fileFormat')}</dt><dd>{summary.format === 'binary' ? t('binary') : t('text')} · {summary.formatVersion || t('legacyFormat')}</dd><dt>{t('gameVersion')}</dt><dd>{summary.gameCode} / {summary.gameVersion}</dd><dt>{t('saveDescription')}</dt><dd>{summary.description || t('none')}</dd><dt>{t('encoding')}</dt><dd>{formatEncoding(summary.encoding)}</dd></dl>}
       <ol><li>{t('helpOpen')}</li><li>{t('helpEdit')}</li><li>{t('helpDownload')}</li></ol>
       <p>{t('helpLabels')}</p>
+      <p>{t('helpCsvMetadata')}</p>
       <p>{t('helpEncoding')}</p>
       <p>{t('helpResize')}</p>
       <p className="help-note">{t('helpLimits')}</p>

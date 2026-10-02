@@ -112,7 +112,18 @@ footer a:hover { color: var(--accent); }
 .avatar { display: grid; place-items: center; background: #e9ecf4; color: #939bb5; width: 30px; height: 30px; border-radius: 8px; font-size: 13px; }
 .character.selected .avatar { background: #dce1fa; color: #6c7bd0; }
 .character-name { display: flex; flex-direction: column; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.character-name small { font-size: 9px; color: #9ba3b5; font-weight: 400; }
+.character-name small { font-size: 9px; color: #9ba3b5; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.csv-counts span { display: block; }
+.character-csv { margin: 0 16px 16px; padding: 12px; border: 1px solid #e3e6ee; border-radius: 7px; font-size: 11px; color: #7b879a; overflow-wrap: anywhere; }
+.character-csv summary { cursor: pointer; color: #53617a; }
+.character-csv summary span { color: #7b879a; margin-left: 8px; }
+.character-csv dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 16px 0; }
+.character-csv dt { font-size: 10px; }
+.character-csv dt code { color: #9199ab; }
+.character-csv dd { color: #43516b; margin: 5px 0 0; white-space: pre-wrap; }
+.character-csv p { margin-bottom: 0; line-height: 1.7; }
+.search-expansion { margin: 0 16px 14px; font-size: 11px; color: #7b879a; overflow-wrap: anywhere; }
+.search-expansion code { color: #53617a; white-space: pre-wrap; }
 .labels-card { padding: 17px 14px 14px; margin-top: 27px; border: 1px solid #e3e6ee; border-radius: 9px; background: #f9fafc; }
 .labels-icon { color: #7d8cc9; display: block; margin-bottom: 12px; }
 .labels-card strong { font-size: 11px; font-weight: 550; }

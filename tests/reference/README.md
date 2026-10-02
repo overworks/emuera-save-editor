@@ -17,6 +17,8 @@ The three C# files and `LICENSE.txt` in `upstream/` were copied without modifica
 
 ## What is checked
 
+Each fixture first loads synthetic standard labels, `Chara*.csv` name metadata, and `_Rename.csv` search substitutions. An unedited export must remain byte-identical. The metadata stays loaded during the value-edit comparisons below. CSV parsing semantics are covered by source-based unit tests, not by executing the engine's CSV loaders; see [CSV source evidence](../../docs/csv-metadata.md).
+
 The original writer generates six fixtures: normal/global saves in binary, UTF-8 text, and CP932 text. Characters and values are synthetic and were not taken from a game's save files. Fixture generation also copies the normal binary save to [src/assets/demo.sav](../../src/assets/demo.sav).
 
 The TypeScript editor modifies these saves, then the original reader reads the results. [scripts/reference-check.ts](../../scripts/reference-check.ts) compares the complete value dictionaries before and after editing to ensure only the intended values changed. The text reader needs array sizes supplied by the host; the adapter uses 128-element arrays for legacy sections, which is sufficient for these fixtures and is not a claim about other games' sizes.

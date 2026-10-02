@@ -47,6 +47,12 @@ This changes the size stored in the save. The game still uses its own declared a
 
 Choose **Load CSV** to load the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files. You can select multiple CSV files. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.
 
+`Chara*.csv` adds reference names, call names, nicknames, and names for the master. Its `NO` or `番号` must match the character's current saved `NO`; the filename and character position are not used for matching. Select a character and expand **Character CSV** to inspect the metadata. Names also appear beside saved name fields and `NO`, and label `RELATION` indices by character number. You can search these labels, including call names and nicknames for `RELATION`. Editing `NO` updates the association. Saved names remain unchanged; initial stats and character creation are not imported. Duplicate character numbers keep the first file's metadata.
+
+`_Rename.csv` adds search substitutions using the engine's `replacement,token` syntax. For example, `ABL:0,focus` lets you search for `[[focus]]`, and `0,skill` lets you search for `ABL:[[skill]]`. The expanded search is shown below the search box. Use a variable name, label, numeric index, or a reference such as `TA:3:2:1` within the selected scope. Tokens are case-sensitive; each rule runs once in import order, with the first definition retained on conflicts. Substitution applies only to search input. It does not alter CSV names or save values, and expressions or dynamic character selectors such as `TARGET` are not evaluated.
+
+CSV imports are limited to a total of 64 MiB per session. Metadata stays in memory and is cleared when another save opens successfully. See [CSV syntax and source evidence](docs/csv-metadata.md) for supported fields, escaped commas, and limits.
+
 Text encoding detection tries UTF-8 first, then CP932/Shift-JIS. Some byte sequences are valid in both encodings. If text looks wrong, select the correct **Read encoding** and choose **Reopen with selected encoding**. Reopening discards edits after confirmation. The encoding selection also applies to subsequently loaded CSV files.
 
 ## Compatibility
@@ -64,17 +70,16 @@ The baseline is standard **Emuera 1.824**, preserved at commit [`85db4cbd`](http
 
 Text saves sometimes called “CSV saves” use Emuera's own format and are different from the CSV files used for labels. Text extension markers for 1700, 1708, 1729, 1803, and 1808 are recognized, with compatibility checks focused on the baseline engine's 1808 output.
 
-Character or variable creation/deletion, text array resizing, format conversion, ERB/ERH execution, `_Rename.csv` substitutions, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. CSV labels do not infer game structure from character CSV files.
+Character or variable creation/deletion, text array resizing, format conversion, ERB/ERH execution, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. Character CSV metadata and search substitutions do not infer or execute game structure or scripts.
 
 Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Automated compatibility checks use synthetic saves generated and read by the original engine's save code. A user has also confirmed loading, editing, and exporting actual save data. This report does not establish in-game reloading or compatibility with every game or fork, or validate the newly added resizing feature with real saves.
 
 ## Planned support
 
-Unsupported features are being addressed incrementally. Binary array resizing is implemented. Remaining work includes:
+Unsupported features are being addressed incrementally. Binary array resizing, character CSV name metadata, and `_Rename.csv` search substitutions are implemented. Remaining work includes:
 
 - Character and variable creation/deletion.
 - Text array resizing and format conversion, with explicit size information where required.
-- `_Rename.csv` substitutions and character CSV metadata.
 - EM/EM+EE-specific formats, with separate format evidence and fixtures.
 - Optional local session recovery, offline reopening/PWA, and a `file://` entry point.
 - ERB/ERH execution, which requires a separate execution design.

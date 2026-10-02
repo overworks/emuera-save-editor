@@ -158,3 +158,51 @@ test('text arrays keep their saved bounds and offer no resizing control', async 
   await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (11)' });
   await expect(page.getByRole('button', { name: '배열 크기 변경', exact: true })).toHaveCount(0);
 });
+
+test('CSV metadata keeps saved bytes, follows edited NO, warns on conflicts and clears with a new save', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('세이브 파일 선택').setInputFiles('tests/fixtures/normal-binary.sav');
+  await page.getByLabel('CSV 파일 선택').setInputFiles(['tests/fixtures/Chara999.csv', 'tests/fixtures/_Rename.csv']);
+  await page.getByRole('button', { name: /アオイ/ }).click();
+  await expect(page.getByRole('heading', { name: 'アオイ', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'NAME 값 수정', exact: true })).toContainText('アオイ');
+  await expect(page.getByRole('button', { name: 'NO 값 수정', exact: true })).toContainText('7');
+  await expect(page.getByText('원본 상태', { exact: true })).toBeVisible();
+  const original = page.waitForEvent('download');
+  await page.getByRole('button', { name: '세이브 다운로드', exact: true }).click();
+  expect(readFileSync((await (await original).path())!)).toEqual(readFileSync('tests/fixtures/normal-binary.sav'));
+  await page.getByLabel('CSV 파일 선택').setInputFiles([
+    { name: 'Chara8.csv', mimeType: 'text/csv', buffer: Buffer.from('NO,8\nNAME,다른 인물') },
+    { name: 'Chara7.csv', mimeType: 'text/csv', buffer: Buffer.from('NO,7\nNAME,덮어쓰기') },
+    { name: '_Rename.csv', mimeType: 'text/csv', buffer: Buffer.from('ABL:1,focus') },
+  ]);
+  await page.locator('.csv-warnings summary').click();
+  await expect(page.locator('.csv-warnings')).toContainText('캐릭터 NO 7 중복');
+  await expect(page.locator('.csv-warnings')).toContainText('중복 별칭 [[focus]]');
+  await page.getByLabel('변수 검색').fill('[[focus]]');
+  await expect(page.getByRole('button', { name: 'ABL:0 값 수정', exact: true })).toBeVisible();
+  await page.getByLabel('변수 검색').fill('NO');
+  await page.getByRole('button', { name: 'NO 값 수정', exact: true }).click();
+  await page.getByLabel('새로운 값').fill('8');
+  await page.getByRole('button', { name: '변경 적용', exact: true }).click();
+  await page.locator('.character-csv summary').click();
+  await expect(page.locator('.character-csv')).toContainText('다른 인물');
+  await expect(page.getByRole('heading', { name: 'アオイ', exact: true })).toBeVisible();
+  const changed = page.waitForEvent('download');
+  await page.getByRole('button', { name: '세이브 다운로드', exact: true }).click();
+  const output = readFileSync((await (await changed).path())!);
+  const doc = parseSave(new Uint8Array(output), 'save.sav');
+  expect(doc.variables.find(v => v.name === 'NO')?.values.get('')).toBe(8n);
+  expect(doc.variables.find(v => v.name === 'NAME')?.values.get('')).toBe('アオイ');
+  page.once('dialog', d => d.accept());
+  await page.getByLabel('세이브 파일 선택').setInputFiles({ name: 'bad.sav', mimeType: 'application/octet-stream', buffer: Buffer.from('bad') });
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.locator('.character-csv')).toContainText('다른 인물');
+  page.once('dialog', d => d.accept());
+  await page.getByLabel('세이브 파일 선택').setInputFiles('tests/fixtures/normal-binary.sav');
+  await page.getByRole('button', { name: /アオイ/ }).click();
+  await expect(page.locator('.character-csv')).toHaveCount(0);
+  await page.getByLabel('변수 검색').fill('[[focus]]');
+  await expect(page.locator('.data-table tbody tr')).toHaveCount(0);
+  await expect(page.locator('.search-expansion')).toHaveCount(0);
+});

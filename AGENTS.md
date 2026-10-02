@@ -6,7 +6,7 @@ This is the repository-wide entry point for coding agents, maintained in English
 
 Emuera Save Studio is a static browser application with English, Korean, and Japanese interfaces. It edits values in normal and global saves from standard Emuera, using text or binary formats, and resizes binary arrays without changing their rank. Files stay in browser memory. The baseline is Emuera 1.824 at commit `85db4cbd5eb2efe6c5b5449ada351a21a20db60b`; see [reference provenance](tests/reference/README.md).
 
-Current scope excludes character/variable creation or deletion, text array resizing, format conversion, ERB/ERH execution, `_Rename.csv`, and fork-specific EM/EM+EE formats. There is no backend, account system, persistent session storage, PWA, or `file://` entry point. Planned support is tracked in the README.
+Current scope excludes character/variable creation or deletion, text array resizing, format conversion, ERB/ERH execution, and fork-specific EM/EM+EE formats. `_Rename.csv` is supported for search substitution; character CSVs provide optional name metadata. There is no backend, account system, persistent session storage, PWA, or `file://` entry point. Planned support is tracked in the README.
 
 ## Code map
 
@@ -17,11 +17,12 @@ Current scope excludes character/variable creation or deletion, text array resiz
 | [src/core/text.ts](src/core/text.ts) | Legacy/extended text parsing, fixed variable order, and byte spans |
 | [src/core/encoding.ts](src/core/encoding.ts) | UTF-8/CP932 detection and lossless text encoding |
 | [src/core/editor.ts](src/core/editor.ts) | Edit overlays, search, pagination, summaries, and validated serialization |
-| [src/core/labels.ts](src/core/labels.ts) | Standard CSV label families, aliases, and conflict handling |
+| [src/core/labels.ts](src/core/labels.ts) | Standard CSV labels, character names by NO, search substitutions, and conflict handling |
 | [src/worker.ts](src/worker.ts), [src/client.ts](src/client.ts) | Worker-owned editor and request-ID-based message interface |
 | [src/App.tsx](src/App.tsx), [src/styles.css](src/styles.css) | File workflow, responsive editor, dialogs, and localized UI |
 | [src/assets/demo.sav](src/assets/demo.sav) | Synthetic demo imported as a bundled asset using `?url` |
 | [tests/core.test.ts](tests/core.test.ts), [tests/e2e/editor.spec.ts](tests/e2e/editor.spec.ts) | Core regression checks and browser flows |
+| [tests/labels.test.ts](tests/labels.test.ts), [docs/csv-metadata.md](docs/csv-metadata.md) | CSV metadata regression checks and source evidence |
 | [tests/fixtures/](tests/fixtures/) | Six synthetic engine-generated saves and CSV label data |
 | [tests/reference/](tests/reference/), [scripts/](scripts/) | Original C# save code, test adapter, fixture generation, and comparison scripts |
 | [vite.config.ts](vite.config.ts), [playwright.config.ts](playwright.config.ts) | Relative asset base, core test selection, and browser preview setup |
@@ -39,7 +40,7 @@ Current scope excludes character/variable creation or deletion, text array resiz
 5. Reparse the exact export and verify variable structure against the intended dimensions and all logical values within those bounds before returning it. Keep integer, encoding, bounds, malformed-file, and resource-limit checks. Reject unsupported versions/tags rather than guessing a layout.
 6. Text cells are editable only when they have entries in `textSpans`. Do not invent trailing array sizes or fill gaps in ragged text arrays. Reject reserved text delimiters, line breaks, NUL, and characters that cannot round-trip through the original encoding.
 7. A Worker `open` request replaces the current editor only after the new save parses successfully. Failed opens must preserve the existing session. Keep the heavy processing in the Worker.
-8. CSV names are optional display metadata. They must not change save structure or values; conflicts retain the first loaded name and produce warnings.
+8. CSV names are optional display metadata. They must not change save structure or values; conflicts retain the first loaded name and produce warnings. Character CSVs match the current signed 64-bit `NO`, never the filename or character position. Preserve saved names in `scopeName`; expose CSV metadata separately. `RELATION` indices use character NO. `_Rename.csv` substitutes search input only, in import order with a single literal pass per rule. Never evaluate expressions or substitute CSV contents or saved values. See [CSV semantics](docs/csv-metadata.md).
 9. Keep the editor and Worker locale-independent. `MessageError` carries a plain `Message` descriptor; translate it in the UI at render time. `Row.scopeName` and character summary names contain only save data and may be empty; shared/global and unnamed-character labels are UI fallbacks. A language change must not reopen a save, reset edits, translate user content, or alter serialization. Language preference is stored only in the URL (`lang`), with browser detection and English fallback.
 
 Resource limits currently include 64 MiB per file, 100 million cells per binary array, 1 million stored values, 1 million text lines, 200,000 variables, and 100,000 characters. Keep these limits effective when changing parsing or iteration.
@@ -50,7 +51,7 @@ Resource limits currently include 64 MiB per file, 100 million cells per binary 
 - Text saves use engine syntax, not generic CSV parsing. Preserve the fixed legacy variable order and literal `__FINISHED`, `__EMU_SEPARATOR__`, and `__EMUERA_*_STRAT__` markers. `STRAT` is the engine's spelling. The 1700 marker is `__EMUERA_STRAT__`; later recognized markers are 1708, 1729, 1803, and 1808.
 - Text multidimensional string arrays are unsupported by the reference engine. Binary arrays and ragged numeric text arrays have different shape/editability rules.
 - Automatic text detection tries strict UTF-8 before CP932/Shift-JIS. A manual override is needed for ambiguous byte sequences. CSV imports use the selected encoding too; never silently substitute unrepresentable characters during export.
-- CSV comments are whole lines starting with `;`; `;!;` activates the remainder of a line. A semicolon inside a label is literal. Standard filename families and aliases live in `labels.ts`. Lookups for format markers and CSV families must exclude inherited object properties.
+- Standard CSV comments are whole lines starting with `;`; `;!;` activates the remainder of a line. A semicolon inside a label is literal. `_Rename.csv` has separate syntax: `replacement,token`, escaped commas (`\,`) in replacements, and comments only at column zero (including `;!;`). Standard filename families and aliases live in `labels.ts`. Lookups for format markers, CSV families, and character fields must exclude inherited object properties.
 
 ## Validation and handoff
 

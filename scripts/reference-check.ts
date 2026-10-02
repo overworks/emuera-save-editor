@@ -11,6 +11,9 @@ for (const filename of readdirSync('tests/fixtures').filter(f => f.endsWith('.sa
   const doc = editor.document;
   const dump = (path: string): Record<string, string> => JSON.parse(runOracle('read', path, doc.fileType, doc.encoding));
   const before = dump(`tests/fixtures/${filename}`);
+  const metadata = ['ABL.csv', 'Chara999.csv', '_Rename.csv'].map(name => ({ name, bytes: new Uint8Array(readFileSync(`tests/fixtures/${name}`)) }));
+  assert.deepEqual(editor.labels.load(metadata, 'auto'), []);
+  assert.deepEqual(editor.serialize(), doc.original, `${filename}: CSV metadata must leave the save byte-identical`);
   // Edit every type/rank, including elements that were implicit zeros in binary arrays.
   for (const v of doc.variables) {
     const keys = v.textSpans ? [...v.textSpans.keys()] : Array.from({ length: cellCount(v.dimensions) }, (_, i) => coordinates(i, v.dimensions));
@@ -28,7 +31,7 @@ for (const filename of readdirSync('tests/fixtures').filter(f => f.endsWith('.sa
     for (const [key, value] of changes) expected[`${v.scope}:${v.name}:${key}`] = String(value);
   }
   assert.deepEqual(after, expected, `${filename}: the original reader must observe exactly the intended edits`);
-  console.log(`✓ ${filename}: ${editor.summary().changes} edits accepted by the original engine reader`);
+  console.log(`✓ ${filename}: CSV metadata preserves original bytes; ${editor.summary().changes} edits accepted by the original engine reader`);
   if (doc.format !== 'binary') continue;
   for (const mode of ['grow', 'shrink', 'mixed', 'empty'] as const) {
     const resized = new Editor(parseSave(doc.original, filename));

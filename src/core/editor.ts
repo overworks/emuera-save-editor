@@ -1,7 +1,8 @@
 import { MAGIC, parseBinary, writeVariable } from './binary';
 import { parseText, FINISH, SEPARATOR } from './text';
 import { encodeText } from './encoding';
-import { Labels } from './labels';
+import { Labels, characterLabel } from './labels';
+import type { CharacterField, CharacterLabels } from './labels';
 import { MAX_ARRAY_CELLS, MAX_FILE_BYTES, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
 import type { EncodingOption, SaveDocument, Scalar, Variable } from './model';
 
@@ -18,13 +19,13 @@ export interface Row {
 export interface Query {
   scope: number | 'all'; variableId?: number; search: string; changedOnly: boolean; page: number;
 }
-export interface Page { rows: Row[]; total: number; page: number; pages: number }
+export interface Page { rows: Row[]; total: number; page: number; pages: number; expandedSearch?: string }
 export interface Summary {
   filename: string; bytes: number; format: 'text' | 'binary'; encoding: string; formatVersion: number;
   fileType: 'normal' | 'global'; gameCode: string; gameVersion: string; description: string;
-  characters: { scope: number; name: string; no: string }[];
+  characters: { scope: number; name: string; no: string; csv?: CharacterLabels }[];
   variables: { id: number; scope: number; name: string; count: number; dimensions: number[]; originalDimensions: number[] }[];
-  changes: number; resizedArrays: number; labels: number;
+  changes: number; resizedArrays: number; labels: number; characterLabels: number; renames: number;
 }
 const PAGE_SIZE = 50;
 export class Editor {
@@ -91,41 +92,58 @@ export class Editor {
     const v = this.characterNames.get(scope);
     return v ? String(this.value(v, '')) : '';
   }
+  private characterCsv(scope: number): CharacterLabels | undefined {
+    const v = this.characterNumbers.get(scope);
+    return v ? this.labels.characters.get(String(this.value(v, ''))) : undefined;
+  }
+  private label(v: Variable, key: string): string {
+    if (v.scope >= 0 && key === '') {
+      const csv = this.characterCsv(v.scope);
+      if (v.name === 'NO') return characterLabel(csv);
+      if (csv && Object.hasOwn(csv.fields, v.name)) return csv.fields[v.name as CharacterField] ?? '';
+    }
+    return this.labels.get(v.name, key);
+  }
   summary(): Summary {
     const d = this.document;
     return { filename: d.filename, bytes: d.original.length, format: d.format, encoding: d.encoding, formatVersion: d.formatVersion,
       fileType: d.fileType, gameCode: String(d.gameCode), gameVersion: String(d.gameVersion), description: d.description,
       characters: Array.from({ length: d.characterCount }, (_, scope) => {
         const v = this.characterNumbers.get(scope);
-        return { scope, name: this.scopeName(scope), no: v ? String(this.value(v, '')) : '—' };
+        return { scope, name: this.scopeName(scope), no: v ? String(this.value(v, '')) : '—', csv: this.characterCsv(scope) };
       }),
       variables: d.variables.map(v => ({ id: v.id, scope: v.scope, name: v.name, dimensions: this.dimensions(v), originalDimensions: v.dimensions,
         count: v.textSpans ? v.textSpans.size : cellCount(this.dimensions(v)) })),
       changes: [...this.edits.keys()].reduce((n, id) => n + this.activeEdits(this.variable(id)).size, this.resizes.size),
-      resizedArrays: this.resizes.size, labels: this.labels.count };
+      resizedArrays: this.resizes.size, labels: this.labels.count, characterLabels: this.labels.characters.size, renames: this.labels.renames.size };
   }
   query(query: Query): Page {
-    const search = query.search.trim().toLowerCase();
+    const expanded = this.labels.expand(query.search.trim());
+    const search = expanded.trim().toLowerCase();
+    const reference = /^([^\d:,\s][^:,\s]*):(\d+(?::\d+){0,2})$/.exec(search);
     const groups: { variable: Variable; dimensions: number[]; keys?: string[]; resized: boolean; count: number }[] = [];
     let total = 0;
     for (const v of this.document.variables) {
       if (query.scope !== 'all' && v.scope !== query.scope) continue;
       if (query.variableId !== undefined && v.id !== query.variableId) continue;
+      if (reference && v.name.toLowerCase() !== reference[1]) continue;
       const dimensions = this.dimensions(v);
       const resized = query.changedOnly && this.resizes.has(v.id) && (!search || v.name.toLowerCase().includes(search));
       let keys: string[] | undefined;
       if (query.changedOnly) keys = [...this.activeEdits(v).keys()];
       else if (v.textSpans) keys = [...v.textSpans.keys()];
-      if (search && !v.name.toLowerCase().includes(search)) {
-        const matches = (key: string) => key === search.replace(/:/g, ',') || this.labels.get(v.name, key).toLowerCase().includes(search);
+      if (reference) {
+        const key = reference[2].replace(/:/g, ',');
+        keys = keys ? keys.filter(k => k === key) : ordinal(key, dimensions) >= 0 ? [key] : [];
+      } else if (search && !v.name.toLowerCase().includes(search)) {
+        const matches = (key: string) => key === search.replace(/:/g, ',') || this.label(v, key).toLowerCase().includes(search) || this.labels.matches(v.name, key, search);
         if (keys) keys = keys.filter(matches);
         else {
           const candidates = new Set<string>();
           const index = search.replace(/:/g, ',');
           if (ordinal(index, dimensions) >= 0) candidates.add(index);
-          this.labels.entries.get(v.name.toUpperCase())?.forEach((label, key) => {
-            if (label.toLowerCase().includes(search) && ordinal(key, dimensions) >= 0) candidates.add(key);
-          });
+          if (!dimensions.length && matches('')) candidates.add('');
+          for (const key of this.labels.matchingKeys(v.name, search)) if (ordinal(key, dimensions) >= 0) candidates.add(key);
           keys = [...candidates];
         }
       }
@@ -146,13 +164,13 @@ export class Editor {
       for (let i = Math.max(0, skip - sizeRow); i < group.count - sizeRow && rows.length < PAGE_SIZE; i++) {
         const key = group.keys?.[i] ?? coordinates(i, group.dimensions);
         rows.push({ type: 'value', variableId: v.id, key, name: v.name, scope: v.scope, scopeName: this.scopeName(v.scope),
-          kind: v.kind, dimensions: group.dimensions, label: this.labels.get(v.name, key),
+          kind: v.kind, dimensions: group.dimensions, label: this.label(v, key),
           value: String(this.value(v, key)), original: String(originalValue(v, key)), changed: this.edits.get(v.id)?.has(key) ?? false });
       }
       skip = 0;
       if (rows.length >= PAGE_SIZE) break;
     }
-    return { rows, total, page, pages };
+    return { rows, total, page, pages, expandedSearch: expanded !== query.search.trim() ? expanded : undefined };
   }
   serialize(): Uint8Array {
     const patches = [];

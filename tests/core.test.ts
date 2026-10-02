@@ -115,7 +115,7 @@ describe('validation and browsing', () => {
     const warnings = labels.load([{ name: 'PALAM.CSV', bytes: encodeText(';comment\n0,体力; note\n0,違う\n1,気力\ninvalid', 'shift_jis') }], 'auto');
     expect(labels.get('JUEL', '0')).toBe('体力; note'); expect(labels.get('PALAM', '1')).toBe('気力');
     expect(warnings).toHaveLength(2);
-    expect(labels.load([{ name: 'chara1.csv', bytes: new Uint8Array() }], 'auto')[0]).toMatchObject({ key: 'csv.unsupported' });
+    expect(labels.load([{ name: 'chara1.csv', bytes: new Uint8Array() }], 'auto')[0]).toMatchObject({ key: 'csv.characterNumber' });
   });
 });
 

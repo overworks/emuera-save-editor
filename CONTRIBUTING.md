@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing and undo, CSV labels, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing and undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
 
 For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
 
@@ -69,6 +69,7 @@ For documentation-only changes, check relative links, commands against `package.
 - Follow the surrounding TypeScript style: strict types, two-space indentation, single quotes, and semicolons. Prefer existing abstractions and dependencies where they fit the change.
 - Preserve keyboard navigation, accessible control names, dialog focus, error feedback, and narrow-screen usability. The product UI supports English, Korean, and Japanese; verify translated text at narrow widths too.
 - Add regression coverage for meaningful behavior changes, especially save-format fixes. Use small synthetic examples instead of committing a user's save or game assets. Keep reference comparisons independent of the TypeScript serializer.
+- CSV behavior is grounded in the baseline engine's loaders; see [CSV metadata semantics](docs/csv-metadata.md). Keep search substitution separate from save serialization, and test signed 64-bit character numbers and first-wins conflicts.
 - Preserve the unmodified engine sources and license under `tests/reference/upstream/`. Test host adaptations belong in `tests/reference/Program.cs`. An intentional baseline update must also update its provenance and compatibility documentation.
 - Keep generated build/test output, local configuration, and credentials out of commits. `dist/`, `node_modules/`, `.reference/`, Playwright reports, and .NET build output are ignored; synthetic fixtures and the bundled demo are tracked deliberately.
 
