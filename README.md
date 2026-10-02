@@ -65,6 +65,14 @@ Text operations copy or remove both the fixed-order base block and the character
 
 See [binary character semantics](docs/binary-characters.md) and [text character semantics](docs/text-characters.md) for source evidence, reference rules, and verification limits.
 
+## Game presets
+
+Choose **Game preset** in the editor for localized names, explanations, and shortcuts to frequently used fields. The catalog covers **eraTWKR Textbung (based on TWKR 1.20)**, **eratohoK 1.29.3**, **eraMegaten KR Rev.143**, and **ShinEraTenseiP 0.5.9**. Each shows the source edition and a link to its variable definitions. Game code and version suggest a candidate; when related games share a code and the version cannot distinguish them, choose manually. Code/version differences are shown, and matching identifiers do not establish compatibility with every patch or engine fork.
+
+Expand **Frequently used fields** and select a character to enable their shortcuts; shared funds can be opened directly where included. Shortcuts open an existing field, and preset names and explanations are searchable in the current interface language within the selected scope and variable group. Missing or incompatible fields are unavailable. CSV labels remain primary, with preset guidance displayed separately.
+
+Selecting or switching presets leaves save values and edits intact. The selection stays in memory, survives a language change or failed file open, and clears when another save opens successfully. Presets work offline after the app loads. They provide a small set of field guides, not complete game data or automatic value changes. See [preset mappings, source editions, and verification limits](docs/game-presets.md).
+
 ## CSV labels and encoding
 
 Choose **Load CSV** to load the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files. You can select multiple CSV files. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.

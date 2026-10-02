@@ -30,6 +30,8 @@ export interface VariableSummary {
 }
 export interface Query {
   scope: number | 'all'; variableId?: number; search: string; changedOnly: boolean; page: number;
+  // UI metadata search resolves to coordinates; the Worker never translates labels.
+  labelMatches?: { name: string; key: string; scope: 'shared' | 'character' }[];
 }
 export interface Page { rows: Row[]; total: number; page: number; pages: number; expandedSearch?: string }
 export interface Summary {
@@ -345,7 +347,9 @@ export class Editor {
         const key = reference[2].replace(/:/g, ',');
         keys = keys ? keys.filter(k => k === key) : ordinal(key, dimensions) >= 0 ? [key] : [];
       } else if (search && !v.name.toLowerCase().includes(search)) {
-        const matches = (key: string) => key === search.replace(/:/g, ',') || this.label(v, key).toLowerCase().includes(search) || this.labels.matches(v.name, key, search);
+        const metadataKeys = new Set(v.kind === 'int' && dimensions.length === 1 && v.section !== 'user'
+          ? query.labelMatches?.filter(match => match.name === v.name && (match.scope === 'shared' ? v.scope === -1 : v.scope >= 0)).map(match => match.key) : []);
+        const matches = (key: string) => metadataKeys.has(key) || key === search.replace(/:/g, ',') || this.label(v, key).toLowerCase().includes(search) || this.labels.matches(v.name, key, search);
         if (keys) keys = keys.filter(matches);
         else {
           const candidates = new Set<string>();
@@ -353,6 +357,7 @@ export class Editor {
           if (ordinal(index, dimensions) >= 0) candidates.add(index);
           if (!dimensions.length && matches('')) candidates.add('');
           for (const key of this.labels.matchingKeys(v.name, search)) if (ordinal(key, dimensions) >= 0) candidates.add(key);
+          for (const key of metadataKeys) if (ordinal(key, dimensions) >= 0) candidates.add(key);
           keys = [...candidates];
         }
       }

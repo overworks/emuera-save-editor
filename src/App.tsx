@@ -8,6 +8,8 @@ import { MAX_FILE_BYTES, SaveError } from './core/model';
 import { messageOf } from './core/diagnostic';
 import type { Message, MessageKey } from './core/diagnostic';
 import { LanguageSelect, useLocale } from './locale';
+import { GamePresets, PresetLabel } from './GamePresets';
+import { gamePresets, presetReference, presetSearchMatches } from './presets';
 import demoUrl from './assets/demo.sav?url';
 
 const emptyPage: Page = { rows: [], page: 0, total: 0, pages: 1 };
@@ -22,6 +24,8 @@ const characterFields = [
 export function App() {
   const { t, message, number } = useLocale();
   const [summary, setSummary] = useState<Summary>();
+  const [presetId, setPresetId] = useState('');
+  const preset = gamePresets.find(candidate => candidate.id === presetId);
   const [scope, setScope] = useState<number | 'all'>(-1);
   const [variableId, setVariableId] = useState<number>();
   const [search, setSearch] = useState('');
@@ -51,13 +55,13 @@ export function App() {
     let active = true;
     const timer = setTimeout(() => {
       setQuerying(true);
-      rpc<Page>({ type: 'query', query: { scope, variableId, search, changedOnly, page } })
+      rpc<Page>({ type: 'query', query: { scope, variableId, search, changedOnly, page, labelMatches: presetSearchMatches(preset, search, t) } })
         .then(result => { if (active) setResults(result); })
         .catch(e => { if (active) { setError(messageOf(e)); setResults(emptyPage); } })
         .finally(() => { if (active) setQuerying(false); });
     }, 120);
     return () => { active = false; clearTimeout(timer); };
-  }, [summary, scope, variableId, search, changedOnly, page]);
+  }, [summary, scope, variableId, search, changedOnly, page, preset, t]);
   useEffect(() => {
     if (!summary?.changes) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -73,7 +77,7 @@ export function App() {
     try {
       if (file.size > MAX_FILE_BYTES) throw new SaveError('error.fileSize');
       const next = await rpc<Summary>({ type: 'open', filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()), encoding });
-      lastFile.current = file; setSummary(next); setResults(emptyPage); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]);
+      lastFile.current = file; setSummary(next); setResults(emptyPage); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]); setPresetId('');
     } catch (e) { setError(messageOf(e, 'error.fileRead')); }
     finally { setBusy(undefined); }
   }
@@ -192,6 +196,9 @@ export function App() {
           <div className="editor-title"><div><h2>{title}</h2><span>{t('variableCount', { count: selectedVariables.length })}</span></div><div className="segmented"><button className={!changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(false); setPage(0); if (selectedVariable?.deleted) setVariableId(undefined); }}>{t('showAll')}</button><button className={changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(true); chooseScope('all'); }}>{t('changes')} <span>{number(summary.changes)}</span></button></div></div>
           {summary.fileType === 'normal' && selectedCharacter && !selectedCharacter.deleted && <div className="character-toolbar"><span>{t('characterPosition')} <code>#{selectedCharacter.index} · NO {selectedCharacter.no}</code></span><div><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'clone', character: selectedCharacter })}>{t('cloneCharacter')}</button><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'delete', character: selectedCharacter })}>{t('deleteCharacter')}</button></div></div>}
           {characterCsv && <details className="character-csv"><summary>{t('characterCsv')} <span>{characterCsv.filename}</span></summary><dl>{characterFields.map(([field, label]) => characterCsv.fields[field] && <div key={field}><dt>{t(label)} <code>{field}</code></dt><dd>{characterCsv.fields[field]}</dd></div>)}</dl><p>{t('characterCsvHint', { no: characterCsv.no })}</p></details>}
+          <GamePresets summary={summary} preset={preset} scope={scope} disabled={!!busy} onSelect={id => { setPresetId(id); setPage(0); }} onNavigate={(field, variable) => {
+            chooseScope(variable.scope); setVariableId(variable.id); setSearch(presetReference(field)); setChangedOnly(false);
+          }} />
           <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${charactersByScope.get(v.scope)?.index}` : ''} ({number(v.count)})</option>)}</select></div></div>
           {results.expandedSearch !== undefined && <p className="search-expansion">{t('searchExpanded')} <code>{results.expandedSearch || t('emptyString')}</code></p>}
           {summary.format === 'binary' && <div className="variable-toolbar"><button className="button secondary small" onClick={() => setAdding(true)} disabled={!!busy}>{t('addVariable')}</button>{selectedVariable && !selectedVariable.deleted && <button className="button secondary small" onClick={() => setDeleting(selectedVariable)} disabled={!!busy || querying}>{t('deleteVariable')}</button>}</div>}
@@ -204,7 +211,7 @@ export function App() {
               <td className="row-actions"><button className="icon-button" aria-label={t(row.type === 'cloneCharacter' ? 'undoCharacterClone' : 'restoreCharacter', { name: scopeName(row.character.scope, row.character.name) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button></td>
             </tr> : <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
               <td><div className="variable-name"><span className={`type-icon ${row.kind}`}>{row.kind === 'int' ? <Hash size={13} /> : <span>Aa</span>}</span><code>{row.name}{row.key !== '' && <span className="index">:{row.key.replace(/,/g, ':')}</span>}</code></div>{scope === 'all' && <small className="row-scope">{scopeName(row.scope, row.scopeName)}</small>}</td>
-              <td className="cell-label">{row.automatic ? <span title={t('automaticReferenceHint')}>{t('automaticReference')}</span> : row.type === 'add' ? t('variableAdded') : row.type === 'delete' ? t('variableDeleted') : row.type === 'resize' ? t('arraySize') : row.label || <span className="muted">—</span>}</td><td>{row.type === 'add' || row.type === 'delete' ? <VariableShape variable={row} /> : <button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button>}</td>
+              <td className="cell-label">{row.automatic ? <span title={t('automaticReferenceHint')}>{t('automaticReference')}</span> : row.type === 'add' ? t('variableAdded') : row.type === 'delete' ? t('variableDeleted') : row.type === 'resize' ? t('arraySize') : <PresetLabel preset={preset} row={row} />}</td><td>{row.type === 'add' || row.type === 'delete' ? <VariableShape variable={row} /> : <button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button>}</td>
               <td className="row-actions">{row.changed && !row.automatic ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'add' ? t('cancelVariableAddition', { name: row.name }) : row.type === 'delete' ? t('restoreVariable', { name: row.name }) : row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={row.automatic ? t('automaticReferenceHint') : t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
             </tr>)}
           </tbody></table>{!results.rows.length && <div className="empty-results"><Search size={29} /><strong>{changedOnly ? t('noChanges') : t('noResults')}</strong><p>{changedOnly ? t('noChangesHint') : t('noResultsHint')}</p></div>}</div>
