@@ -1,3 +1,4 @@
+import { isVariableRow } from './rows';
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { Editor, parseSave } from '../src/core/editor';
@@ -103,12 +104,12 @@ describe('validation and browsing', () => {
     const e = open('normal-binary');
     e.labels.load([{ name: 'ABL.csv', bytes: new TextEncoder().encode('0,집중력\n2,기술') }], 'auto');
     const q = { scope: 'all' as const, search: '집중력', changedOnly: false, page: 0 };
-    expect(e.query(q).rows[0].name).toBe('ABL');
-    expect(e.query({ ...q, search: '3:2:1' }).rows[0].value).toBe('42');
+    expect(e.query(q).rows.filter(isVariableRow)[0].name).toBe('ABL');
+    expect(e.query({ ...q, search: '3:2:1' }).rows.filter(isVariableRow)[0].value).toBe('42');
     const m = variable(e, 'MONEY'); e.set(m.id, '0', '3456');
-    expect(e.query({ ...q, search: '', changedOnly: true }).rows).toHaveLength(1);
+    expect(e.query({ ...q, search: '', changedOnly: true }).rows.filter(isVariableRow)).toHaveLength(1);
     e.set(m.id, '0', '2500'); expect(e.summary().changes).toBe(0);
-    expect(e.query({ ...q, search: 'money' }).rows[0].value).toBe('2500');
+    expect(e.query({ ...q, search: 'money' }).rows.filter(isVariableRow)[0].value).toBe('2500');
   });
   it('applies aliases, comments and first-wins CSV conflicts', () => {
     const labels = new Labels();
@@ -154,7 +155,7 @@ describe('binary array resizing', () => {
     e.resize(v.id, [2, 3]);
     expect(e.summary()).toMatchObject({ changes: 2, resizedArrays: 1 });
     const query = { scope: 'all' as const, variableId: v.id, search: '', changedOnly: true, page: 0 };
-    expect(e.query(query).rows.map(row => [row.type, row.key])).toEqual([['resize', ''], ['value', '1,2']]);
+    expect(e.query(query).rows.filter(isVariableRow).map(row => [row.type, row.key])).toEqual([['resize', ''], ['value', '1,2']]);
     const after = variable(new Editor(parseSave(e.serialize(), 'resized.sav')), 'DA');
     expect(after.dimensions).toEqual([2, 3]);
     expect(after.values.get('1,2')).toBe(456n);
@@ -163,7 +164,7 @@ describe('binary array resizing', () => {
     expect(e.query({ ...query, changedOnly: false, search: '3:4' }).total).toBe(0);
     e.revertResize(v.id);
     expect(e.summary()).toMatchObject({ changes: 2, resizedArrays: 0 });
-    expect(e.query({ ...query, search: '3:4' }).rows[0].value).toBe('123');
+    expect(e.query({ ...query, search: '3:4' }).rows.filter(isVariableRow)[0].value).toBe('123');
     e.revert(v.id, '3,4'); e.revert(v.id, '1,2');
     expect(e.serialize()).toEqual(fixture('normal-binary'));
   });
@@ -172,19 +173,19 @@ describe('binary array resizing', () => {
     const q = { scope: 0, variableId: v.id, search: '', changedOnly: false, page: 0 };
     e.labels.load([{ name: 'ABL.csv', bytes: new TextEncoder().encode('8,追加') }], 'auto');
     e.resize(v.id, [10]); e.set(v.id, '8', '55');
-    expect(e.query({ ...q, search: '追加' }).rows[0].value).toBe('55');
+    expect(e.query({ ...q, search: '追加' }).rows.filter(isVariableRow)[0].value).toBe('55');
     e.resize(v.id, [0]);
-    expect(e.query(q).rows).toEqual([]);
-    expect(e.query({ ...q, changedOnly: true }).rows[0].type).toBe('resize');
+    expect(e.query(q).rows.filter(isVariableRow)).toEqual([]);
+    expect(e.query({ ...q, changedOnly: true }).rows.filter(isVariableRow)[0].type).toBe('resize');
     expect(variable(new Editor(parseSave(e.serialize(), 'empty.sav')), 'ABL').dimensions).toEqual([0]);
     e.revertResize(v.id);
-    expect(e.query({ ...q, search: '追加' }).rows).toEqual([]);
+    expect(e.query({ ...q, search: '追加' }).rows.filter(isVariableRow)).toEqual([]);
     expect(e.summary().changes).toBe(0);
     expect(e.serialize()).toEqual(fixture('normal-binary'));
     e.resize(v.id, [10]);
-    expect(e.query({ ...q, search: '8' }).rows[0].value).toBe('55');
+    expect(e.query({ ...q, search: '8' }).rows.filter(isVariableRow)[0].value).toBe('55');
     e.reset(); e.resize(v.id, [10]);
-    expect(e.query({ ...q, search: '8' }).rows[0].value).toBe('0');
+    expect(e.query({ ...q, search: '8' }).rows.filter(isVariableRow)[0].value).toBe('0');
   });
   it('validates sizes atomically and rejects text arrays, scalars, and rank changes', () => {
     const e = open('normal-binary'), v = variable(e, 'DA');
@@ -206,10 +207,10 @@ describe('binary array resizing', () => {
     for (let i = 0; i < 51; i++) e.set(v.id, String(i), '1234567');
     const q = { scope: -1, variableId: v.id, search: '', changedOnly: true, page: 0 };
     expect(e.query(q)).toMatchObject({ total: 52, pages: 2 });
-    expect(e.query(q).rows).toHaveLength(50);
-    expect(e.query(q).rows[0].type).toBe('resize');
-    expect(e.query({ ...q, page: 1 }).rows.map(row => row.key)).toEqual(['49', '50']);
-    expect(e.query({ ...q, search: '50' }).rows.map(row => row.key)).toEqual(['50']);
+    expect(e.query(q).rows.filter(isVariableRow)).toHaveLength(50);
+    expect(e.query(q).rows.filter(isVariableRow)[0].type).toBe('resize');
+    expect(e.query({ ...q, page: 1 }).rows.filter(isVariableRow).map(row => row.key)).toEqual(['49', '50']);
+    expect(e.query({ ...q, search: '50' }).rows.filter(isVariableRow).map(row => row.key)).toEqual(['50']);
   });
 });
 
@@ -238,11 +239,11 @@ describe('binary sparse codec', () => {
     const raw = document(v); expect(raw.length).toBeLessThan(100);
     const e = new Editor(parseSave(raw, 'global.sav'));
     expect(e.document.variables[0].values.size).toBe(1);
-    expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.at(-1)?.value).toBe('8');
+    expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.filter(isVariableRow).at(-1)?.value).toBe('8');
     e.set(0, '0,0', '12'); expect(e.serialize().length).toBeLessThan(120);
     e.resize(0, [20000, 5000]);
     e.set(0, '19999,4999', String(MAX_INT));
-    expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.at(-1)?.value).toBe(String(MAX_INT));
+    expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.filter(isVariableRow).at(-1)?.value).toBe(String(MAX_INT));
     const resized = parseSave(e.serialize(), 'global.sav');
     expect(resized.variables[0].values.size).toBe(2);
     expect(resized.original.length).toBeLessThan(150);

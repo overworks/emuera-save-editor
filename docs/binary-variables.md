@@ -25,7 +25,7 @@ The editor supports these additions to existing normal/global binary saves. New 
 
 The name input accepts Unicode letters or underscore initially, then letters, combining marks, numbers, or underscores, up to 128 UTF-16 units. Names are preserved as entered. Duplicate active names in a scope are rejected using uppercase comparison, including across character sections. Original duplicate records are preserved. Restoring a deleted original is rejected if an added record uses its name; cancel that addition first. This is a deliberately limited input policy, not an implementation of the engine's identifier/declaration parser.
 
-Adding records does not create game variables, and deleting records does not delete declarations. The game's declarations, save eligibility, names, types, scope, rank, and target array sizes determine what gets loaded. The editor cannot determine those declarations from a save or CSV metadata. It does not guarantee a game will retain arbitrary additions when it next saves. Text variable addition/deletion and character creation/deletion require separate designs and are not part of this feature.
+Adding records does not create game variables, and deleting records does not delete declarations. The game's declarations, save eligibility, names, types, scope, rank, and target array sizes determine what gets loaded. The editor cannot determine those declarations from a save or CSV metadata. It does not guarantee a game will retain arbitrary additions when it next saves. Text variable addition/deletion remains unsupported. [Character duplication/deletion](binary-characters.md) is a separate normal-binary operation; variable operations also work within copied characters.
 
 ## Preservation and validation
 

@@ -1,3 +1,4 @@
+import { isVariableRow } from './rows';
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Editor, parseSave } from '../src/core/editor';
@@ -20,7 +21,7 @@ describe('binary variable structure', () => {
         dimensions.fill(99);
         const key = Array(rank).fill(1).join(',');
         e.set(id, key, kind === 'int' ? String(MAX_INT) : '새 값😀\n文字');
-        expect(e.query({ ...query, variableId: id }).rows.find(row => row.key === key)?.value).toBe(kind === 'int' ? String(MAX_INT) : '새 값😀\n文字');
+        expect(e.query({ ...query, variableId: id }).rows.filter(isVariableRow).find(row => row.key === key)?.value).toBe(kind === 'int' ? String(MAX_INT) : '새 값😀\n文字');
       }
       const saved = parseSave(e.serialize(), file);
       expect(e.summary()).toMatchObject({ addedVariables: 8, valueChanges: 8, changes: 16 });
@@ -37,12 +38,12 @@ describe('binary variable structure', () => {
       e.set(v.id, '0', String(MIN_INT)); e.resize(v.id, [20]); e.deleteVariable(v.id);
       expect(e.summary()).toMatchObject({ changes: 1, valueChanges: 0, resizedArrays: 0, deletedVariables: 1 });
       expect(e.query({ ...query, variableId: v.id }).total).toBe(0);
-      expect(e.query({ ...query, changedOnly: true }).rows).toMatchObject([{ type: 'delete', variableId: v.id }]);
+      expect(e.query({ ...query, changedOnly: true }).rows.filter(isVariableRow)).toMatchObject([{ type: 'delete', variableId: v.id }]);
       for (const mutate of [() => e.set(v.id, '0', '9'), () => e.resize(v.id, [2]), () => e.revert(v.id, '0')]) expect(mutate).toThrow('error.variableMissing');
       expect(parseSave(e.serialize(), 'deleted.sav').variables.some(a => a.scope === v.scope && a.name === v.name)).toBe(false);
       e.restoreVariable(v.id);
       expect(e.summary()).toMatchObject({ changes: 2, valueChanges: 1, resizedArrays: 1, deletedVariables: 0 });
-      expect(e.query({ ...query, variableId: v.id }).rows[0].value).toBe(String(MIN_INT));
+      expect(e.query({ ...query, variableId: v.id }).rows.filter(isVariableRow)[0].value).toBe(String(MIN_INT));
       e.reset(); expect(e.serialize()).toEqual(fixture(file));
       for (const original of e.document.variables) e.deleteVariable(original.id);
       const empty = parseSave(e.serialize(), 'empty.sav');
@@ -60,7 +61,7 @@ describe('binary variable structure', () => {
     expect(variables.map(v => v.name)).toEqual(['NAME', 'CALLNAME', 'NO', 'ABL', 'BASE', 'NICKNAME', 'CUSTOM', 'NEW_CUSTOM']);
     expect(variables.find(v => v.name === 'NICKNAME')?.section).toBe('builtin');
     expect(variables.find(v => v.name === 'NEW_CUSTOM')?.section).toBe('user');
-    expect(e.query({ ...query, changedOnly: true }).rows.filter(row => row.type === 'add').map(row => row.variableId)).toEqual([builtin, user]);
+    expect(e.query({ ...query, changedOnly: true }).rows.filter(isVariableRow).filter(row => row.type === 'add').map(row => row.variableId)).toEqual([builtin, user]);
     e.deleteVariable(user); e.deleteVariable(builtin); expect(e.serialize()).toEqual(fixture('normal-binary'));
   });
   it('adds to empty character scopes and creates only the required separators', () => {
@@ -94,9 +95,9 @@ describe('binary variable structure', () => {
     for (let i = 0; i < 51; i++) e.set(id, String(i), '42');
     for (let i = 0; i < 5; i++) e.addVariable({ ...spec, name: `EMPTY_${i}`, dimensions: [0] });
     expect(e.query({ ...query, changedOnly: true })).toMatchObject({ total: 58, pages: 2 });
-    expect(e.query({ ...query, changedOnly: true }).rows).toHaveLength(50);
-    expect(e.query({ ...query, changedOnly: true, page: 1 }).rows).toHaveLength(8);
-    expect(e.query({ ...query, search: 'EMPTY', changedOnly: true }).rows.every(row => row.type === 'add')).toBe(true);
+    expect(e.query({ ...query, changedOnly: true }).rows.filter(isVariableRow)).toHaveLength(50);
+    expect(e.query({ ...query, changedOnly: true, page: 1 }).rows.filter(isVariableRow)).toHaveLength(8);
+    expect(e.query({ ...query, search: 'EMPTY', changedOnly: true }).rows.filter(isVariableRow).every(row => row.type === 'add')).toBe(true);
     e.deleteVariable(id); expect(e.summary()).toMatchObject({ changes: 5, valueChanges: 0, resizedArrays: 0 });
     expect(() => e.set(id, '0', '9')).toThrow('error.variableMissing');
     e.reset(); const fresh = e.addVariable(spec); expect(fresh).toBeGreaterThan(id);

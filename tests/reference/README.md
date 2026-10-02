@@ -31,6 +31,8 @@ For variable addition/deletion, the binary reader also reports record names, sco
 
 This checks save-code compatibility without running a game. It does not validate game script rules, actual user saves, or every Emuera fork. The C# code is used only for development checks and is not included in the browser bundle.
 
+Character operations use another temporary original-writer fixture with three characters (including empty and unseparated blocks), TARGET/ASSI/MASTER/PLAYER, an unknown game reference, and 64-bit extremes. Six scenarios compare edited copies plus deletion, deletion of every character, empty/unseparated copies, manual reference restoration, references to copies, and cancellation of a referenced copy. Expected results are built from the original reader's dictionaries with explicit value edits and scope remapping; full values, dimensions, count and layout are compared. Reset and individual character restoration must recover the original bytes. See [character source evidence](../../docs/binary-characters.md) for the editor's reference policy and its limits.
+
 ## Running the checks
 
 Install the project's npm dependencies and the .NET 8 SDK. From the repository root, run:

@@ -8,7 +8,7 @@ export type BinarySection = 'builtin' | 'user';
 export interface Span { start: number; end: number }
 export interface Variable extends Span {
   id: number;
-  scope: number; // -1: shared/global; otherwise character's position, never character NO
+  scope: number; // -1: shared/global; otherwise stable character ID (original position), never NO.
   name: string;
   kind: 'int' | 'string';
   dimensions: number[];
@@ -28,7 +28,7 @@ export interface SaveDocument {
   description: string;
   characterCount: number;
   variables: Variable[];
-  binaryLayout?: { characterEnds: number[]; characterSeparators: (number | undefined)[]; eof: number };
+  binaryLayout?: { characterCountOffset?: number; characterStarts: number[]; characterEnds: number[]; characterSeparators: (number | undefined)[]; sharedStart: number; eof: number };
 }
 export class SaveError extends MessageError {
   constructor(key: ErrorKey, position?: number, unit: 'byte' | 'line' = 'byte', params: MessageParams = {}) {
@@ -76,7 +76,7 @@ export function originalValue(v: Variable, key: string): Scalar {
   return v.values.get(key) ?? (v.kind === 'int' ? 0n : '');
 }
 export function patchBytes(original: Uint8Array, patches: (Span & { bytes: Uint8Array })[]): Uint8Array {
-  patches.sort((a, b) => a.start - b.start);
+  patches.sort((a, b) => a.start - b.start || a.end - b.end); // Insertions precede replacements at the same boundary.
   const size = original.length + patches.reduce((n, p) => n + p.bytes.length - (p.end - p.start), 0);
   if (size > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
   const result = new Uint8Array(size);

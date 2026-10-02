@@ -19,6 +19,20 @@ internal static class Program {
     static long[] Numbers = new long[] { 0, 207, 208, -32768, 32767, 32768, -2147483648, 2147483647, 2147483648, long.MinValue, long.MaxValue, 0 };
     static void Main(string[] args) {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        if (args[0] == "generate-characters") {
+            using var w = new EraBinaryDataWriter(File.Create(args[1]));
+            w.WriteHeader(); w.WriteFileType(EraSaveFileType.Normal);
+            w.WriteInt64(4242); w.WriteInt64(100); w.WriteString("character operations"); w.WriteInt64(3);
+            w.WriteWithKey("NAME", "一人目"); w.WriteWithKey("NO", 7L); w.WriteWithKey("ABL", new long[] { 1, 0, 3 });
+            w.WriteWithKey("RELATION", new long[] { 0, long.MinValue });
+            w.WriteSeparator(); w.WriteWithKey("CUSTOM", new string[,] { { "", "保存😀" } }); w.WriteEOC();
+            w.WriteEOC(); // Empty character.
+            w.WriteWithKey("NAME", "三人目"); w.WriteWithKey("NO", long.MaxValue); w.WriteWithKey("ABL", new long[] { 5, 6 }); w.WriteEOC();
+            w.WriteWithKey("TARGET", new long[] { 2, long.MaxValue }); w.WriteWithKey("ASSI", new long[] { 1 });
+            w.WriteWithKey("MASTER", new long[] { 0 }); w.WriteWithKey("PLAYER", new long[] { 2 });
+            w.WriteWithKey("GAME_REF", new long[] { 2 }); w.WriteWithKey("NOTES", new string[] { "unchanged" }); w.WriteEOF();
+            return;
+        }
         if (args[0] == "generate-structure") {
             using var w = new EraBinaryDataWriter(File.Create(args[1]));
             w.WriteHeader(); w.WriteFileType(EraSaveFileType.Normal);

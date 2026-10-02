@@ -1,3 +1,4 @@
+import { isVariableRow } from './rows';
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { Editor, parseSave } from '../src/core/editor';
@@ -42,8 +43,8 @@ describe('_Rename.csv search substitutions', () => {
     const e = open();
     e.labels.load([fixture('_Rename.csv')], 'auto');
     expect(e.query({ ...query, search: '[[focus]]' })).toMatchObject({ total: 1, expandedSearch: 'ABL:0', rows: [{ name: 'ABL', key: '0', scope: 0 }] });
-    expect(e.query({ ...query, search: 'ABL:[[skill]]' }).rows[0].key).toBe('0');
-    expect(e.query({ ...query, search: '[[lastCell]]' }).rows[0]).toMatchObject({ name: 'TA', key: '3,2,1', value: '42' });
+    expect(e.query({ ...query, search: 'ABL:[[skill]]' }).rows.filter(isVariableRow)[0].key).toBe('0');
+    expect(e.query({ ...query, search: '[[lastCell]]' }).rows.filter(isVariableRow)[0]).toMatchObject({ name: 'TA', key: '3,2,1', value: '42' });
     expect(e.query({ ...query, scope: -1, search: '[[focus]]' }).total).toBe(0);
     expect(e.query({ ...query, search: 'ABL:99' }).total).toBe(0);
     expect(e.query({ ...query, search: 'ABL:TARGET:0' }).total).toBe(0);
@@ -51,7 +52,7 @@ describe('_Rename.csv search substitutions', () => {
     e.resize(v.id, [0]);
     expect(e.query({ ...query, search: '[[focus]]' }).total).toBe(0);
     e.reset(); e.set(v.id, '0', '9');
-    expect(e.query({ ...query, search: '[[focus]]', changedOnly: true }).rows[0].value).toBe('9');
+    expect(e.query({ ...query, search: '[[focus]]', changedOnly: true }).rows.filter(isVariableRow)[0].value).toBe('9');
     expect(e.query({ ...query, search: 'ABL:1', changedOnly: true }).total).toBe(0);
   });
   it('bounds expansion size and work without modifying saved data or existing CSV metadata', () => {
@@ -63,7 +64,7 @@ describe('_Rename.csv search substitutions', () => {
     expect(() => e.labels.expand('[[unknown]]'.repeat(90_000))).not.toThrow();
     e.labels.load([csv('_Rename.csv', Array.from({ length: 60 }, (_, i) => `0,extra${i}`).join('\n'))], 'auto');
     expect(() => e.labels.expand('[[unknown]]'.repeat(90_000))).toThrow('error.renameExpansion');
-    expect(e.query({ ...query, search: 'MONEY:0' }).rows[0].value).toBe('2500');
+    expect(e.query({ ...query, search: 'MONEY:0' }).rows.filter(isVariableRow)[0].value).toBe('2500');
     expect(e.serialize()).toEqual(fixture('normal-binary.sav').bytes);
   });
 });
@@ -98,14 +99,14 @@ describe('character CSV metadata', () => {
       const e = open(save);
       e.labels.load([fixture('Chara999.csv'), fixture('_Rename.csv'), csv('Chara8.csv', 'NO,8\nNAME,別人')], 'auto');
       expect(e.summary()).toMatchObject({ changes: 0, characterLabels: 2, renames: 3, characters: [{ name: 'アオイ', no: '7', csv: { fields: { NAME: '青い旅人' } } }] });
-      expect(e.query({ ...query, search: '青い旅人' }).rows.map(row => row.name).sort()).toEqual(['NAME', 'NO']);
+      expect(e.query({ ...query, search: '青い旅人' }).rows.filter(isVariableRow).map(row => row.name).sort()).toEqual(['NAME', 'NO']);
       const no = e.document.variables.find(v => v.name === 'NO')!;
       e.set(no.id, '', '8');
       expect(e.summary().characters[0]).toMatchObject({ name: 'アオイ', no: '8', csv: { fields: { NAME: '別人' } } });
       e.set(no.id, '', '9'); expect(e.summary().characters[0].csv).toBeUndefined();
       e.reset(); expect(e.serialize()).toEqual(fixture(save).bytes);
       e.labels.load([csv('_Rename.csv', 'NAME,名前参照')], 'auto');
-      expect(e.query({ ...query, search: '[[名前参照]]' }).rows.find(row => row.name === 'NAME')).toMatchObject({ value: 'アオイ', label: '青い旅人', changed: false });
+      expect(e.query({ ...query, search: '[[名前参照]]' }).rows.filter(isVariableRow).find(row => row.name === 'NAME')).toMatchObject({ value: 'アオイ', label: '青い旅人', changed: false });
     });
   }
   it('labels and searches sparse RELATION cells by character NO, names, call names and nicknames', () => {
@@ -117,7 +118,7 @@ describe('character CSV metadata', () => {
     e.labels.load([fixture('Chara999.csv'), csv('CharaFar.csv', 'NO,100000000\nNAME,青い旅人')], 'auto');
     for (const search of ['青い旅人', 'アオ', '青空']) expect(e.query({ ...query, search })).toMatchObject({ total: 1, rows: [{ name: 'RELATION', key: '7', label: '青い旅人', value: '0' }] });
     e.set(0, '7', '99');
-    expect(e.query({ ...query, search: '青空', changedOnly: true }).rows[0].value).toBe('99');
+    expect(e.query({ ...query, search: '青空', changedOnly: true }).rows.filter(isVariableRow)[0].value).toBe('99');
     e.reset(); expect(e.serialize()).toEqual(bytes);
   });
   it('leaves token-like CSV names literal and supports imports in any file order', () => {

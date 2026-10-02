@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion and undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion, character duplication/deletion and reference previews, undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
 
 For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
 
@@ -71,6 +71,7 @@ For documentation-only changes, check relative links, commands against `package.
 - Add regression coverage for meaningful behavior changes, especially save-format fixes. Use small synthetic examples instead of committing a user's save or game assets. Keep reference comparisons independent of the TypeScript serializer.
 - CSV behavior is grounded in the baseline engine's loaders; see [CSV metadata semantics](docs/csv-metadata.md). Keep search substitution separate from save serialization, and test signed 64-bit character numbers and first-wins conflicts.
 - Binary variable operations must respect the engine's character sections and supported ranks; see [binary variable semantics](docs/binary-variables.md). Preserve stable editor IDs across deletions and validate record membership/order independently through the reference reader, including empty scopes and missing separators.
+- Character operations must distinguish stable scope IDs from current save positions and preserve manual reference targets across deletion/restoration. See [character semantics](docs/binary-characters.md). Check exact reset, copied edits, empty characters, the last-character deletion, known reference adjustments, and untouched custom references using the independent reader.
 - Preserve the unmodified engine sources and license under `tests/reference/upstream/`. Test host adaptations belong in `tests/reference/Program.cs`. An intentional baseline update must also update its provenance and compatibility documentation.
 - Keep generated build/test output, local configuration, and credentials out of commits. `dist/`, `node_modules/`, `.reference/`, Playwright reports, and .NET build output are ignored; synthetic fixtures and the bundled demo are tracked deliberately.
 

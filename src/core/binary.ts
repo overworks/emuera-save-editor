@@ -112,10 +112,13 @@ export function parseBinary(bytes: Uint8Array, filename: string): SaveDocument {
   const fileType = r.u8();
   if (fileType > 1) r.fail('error.fileType');
   const gameCode = r.i64(), gameVersion = r.i64(), description = r.string();
+  const characterCountOffset = fileType === 0 ? r.offset : undefined;
   const chars = fileType === 0 ? r.i64() : 0n;
   if (chars < 0 || chars > 100_000n) r.fail('error.characterCount');
   const variables: Variable[] = [];
   const characterEnds: number[] = [], characterSeparators: (number | undefined)[] = [];
+  const characterStarts = chars > 0 ? [r.offset] : [];
+  let sharedStart = r.offset;
   let scope = chars > 0 ? 0 : -1;
   let separatorSeen = false;
   for (;;) {
@@ -128,7 +131,8 @@ export function parseBinary(bytes: Uint8Array, filename: string): SaveDocument {
       if (scope === -1) r.fail('error.characterSeparator');
       characterEnds[scope] = start;
       scope++; separatorSeen = false;
-      if (scope === Number(chars)) scope = -1;
+      if (scope === Number(chars)) { scope = -1; sharedStart = r.offset; }
+      else characterStarts[scope] = r.offset;
     } else if (tag === 0xfd) {
       if (scope === -1 || separatorSeen) r.fail('error.variableSeparator');
       characterSeparators[scope] = start;
@@ -143,7 +147,7 @@ export function parseBinary(bytes: Uint8Array, filename: string): SaveDocument {
   if (r.offset !== bytes.length) r.fail('error.trailingBinary');
   return { original: bytes, filename, format: 'binary', encoding: 'utf-16le', formatVersion: version,
     fileType: fileType ? 'global' : 'normal', gameCode, gameVersion, description, characterCount: Number(chars), variables,
-    binaryLayout: { characterEnds, characterSeparators, eof: r.offset - 1 } };
+    binaryLayout: { characterCountOffset, characterStarts, characterEnds, characterSeparators, sharedStart, eof: r.offset - 1 } };
 }
 
 // Only the changed variable is re-encoded. Sparse coordinates avoid expanding zero-filled arrays.

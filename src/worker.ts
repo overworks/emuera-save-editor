@@ -15,6 +15,10 @@ export type Request =
   | { type: 'addVariable'; variable: NewVariable }
   | { type: 'deleteVariable'; id: number }
   | { type: 'restoreVariable'; id: number }
+  | { type: 'cloneCharacter'; scope: number }
+  | { type: 'previewDeleteCharacter'; scope: number }
+  | { type: 'deleteCharacter'; scope: number }
+  | { type: 'restoreCharacter'; scope: number }
   | { type: 'reset' }
   | { type: 'labels'; files: { name: string; bytes: Uint8Array }[]; encoding: EncodingOption }
   | { type: 'export' };
@@ -39,6 +43,10 @@ self.onmessage = ({ data }: MessageEvent<{ requestId: number; request: Request }
         case 'addVariable': { const id = editor.addVariable(request.variable); result = { id, summary: editor.summary() }; break; }
         case 'deleteVariable': editor.deleteVariable(request.id); result = editor.summary(); break;
         case 'restoreVariable': editor.restoreVariable(request.id); result = editor.summary(); break;
+        case 'cloneCharacter': { const scope = editor.cloneCharacter(request.scope); result = { scope, summary: editor.summary() }; break; }
+        case 'previewDeleteCharacter': result = editor.previewDeleteCharacter(request.scope); break;
+        case 'deleteCharacter': editor.deleteCharacter(request.scope); result = editor.summary(); break;
+        case 'restoreCharacter': editor.restoreCharacter(request.scope); result = editor.summary(); break;
         case 'reset': editor.reset(); result = editor.summary(); break;
         case 'labels': result = { warnings: editor.labels.load(request.files, request.encoding), summary: editor.summary() }; break;
         case 'export': result = editor.serialize(); break;

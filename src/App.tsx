@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUpRight, Braces, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, FileCode2, FilePlus2, FileText, FolderOpen, Hash, Layers3, ListFilter, LoaderCircle, LockKeyhole, Pencil, RotateCcw, Search, ShieldCheck, Table2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { rpc } from './client';
-import type { NewVariable, Page, Row, Summary, VariableSummary } from './core/editor';
+import type { CharacterSummary, NewVariable, Page, ReferenceChange, Row, Summary, VariableRow, VariableSummary } from './core/editor';
 import type { EncodingOption } from './core/model';
 import { MAX_FILE_BYTES, SaveError } from './core/model';
 import { messageOf } from './core/diagnostic';
@@ -14,7 +14,7 @@ const emptyPage: Page = { rows: [], page: 0, total: 0, pages: 1 };
 const size = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 const formatEncoding = (encoding: string) => encoding === 'shift_jis' ? 'Shift-JIS / CP932' : encoding.toUpperCase();
 
-const cellName = (row: Row) => row.name + (row.key === '' ? '' : `:${row.key.replace(/,/g, ':')}`);
+const cellName = (row: VariableRow) => row.name + (row.key === '' ? '' : `:${row.key.replace(/,/g, ':')}`);
 const characterFields = [
   ['NAME', 'csvName'], ['CALLNAME', 'csvCallname'], ['NICKNAME', 'csvNickname'], ['MASTERNAME', 'csvMastername'],
 ] as const;
@@ -35,10 +35,11 @@ export function App() {
   const [notice, setNotice] = useState<Message>();
   const [warnings, setWarnings] = useState<Message[]>([]);
   const [dragging, setDragging] = useState(false);
-  const [editing, setEditing] = useState<Row>();
+  const [editing, setEditing] = useState<VariableRow>();
   const [resizing, setResizing] = useState<Summary['variables'][number]>();
   const [adding, setAdding] = useState(false);
   const [deleting, setDeleting] = useState<VariableSummary>();
+  const [characterAction, setCharacterAction] = useState<{ type: 'clone' | 'delete'; character: CharacterSummary }>();
   const [help, setHelp] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
@@ -111,23 +112,29 @@ export function App() {
   async function revert(row?: Row) {
     if (!row && !window.confirm(t('confirmRevert'))) return;
     try {
-      const next = await rpc<Summary>(row ? row.type === 'add' ? { type: 'deleteVariable', id: row.variableId }
+      const next = await rpc<Summary>(row ? 'character' in row ? { type: row.type === 'cloneCharacter' ? 'deleteCharacter' : 'restoreCharacter', scope: row.character.scope }
+        : row.type === 'add' ? { type: 'deleteVariable', id: row.variableId }
         : row.type === 'delete' ? { type: 'restoreVariable', id: row.variableId }
         : row.type === 'resize' ? { type: 'revertResize', id: row.variableId } : { type: 'revert', id: row.variableId, key: row.key } : { type: 'reset' });
       setSummary(next);
+      if (scope !== 'all' && scope >= 0 && !next.characters.some(c => c.scope === scope && !c.deleted)) chooseScope(-1);
       if (!next.variables.some(v => v.id === variableId && (!v.deleted || changedOnly))) setVariableId(undefined);
     }
     catch (e) { setError(messageOf(e)); }
   }
+  const charactersByScope = new Map(summary?.characters.map(c => [c.scope, c]));
   function scopeName(position: number, name = '') {
-    return position === -1 ? t(summary?.fileType === 'global' ? 'globalVariables' : 'sharedVariables') : name || t('character', { index: String(position) });
+    const character = charactersByScope.get(position);
+    return position === -1 ? t(summary?.fileType === 'global' ? 'globalVariables' : 'sharedVariables') : name || t('character', { index: String(character?.index ?? character?.originalIndex ?? position) });
   }
-  const title = scope === 'all' ? t('allVariables') : scopeName(scope, summary?.characters.find(c => c.scope === scope)?.name);
+  const title = scope === 'all' ? t('allVariables') : scopeName(scope, charactersByScope.get(scope)?.name);
   const selectedVariables = summary?.variables.filter(v => (!v.deleted || changedOnly) && (scope === 'all' || v.scope === scope)) ?? [];
   const selectedVariable = selectedVariables.find(v => v.id === variableId);
-  const characterCsv = summary?.characters.find(c => c.scope === scope)?.csv;
+  const selectedCharacter = scope === 'all' ? undefined : charactersByScope.get(scope);
+  const activeCharacters = summary?.characters.filter(c => !c.deleted) ?? [];
+  const characterCsv = selectedCharacter?.csv;
   const hasCsv = !!summary && summary.labels + summary.characterLabels + summary.renames > 0;
-  function editRow(row: Row) {
+  function editRow(row: VariableRow) {
     if (row.type === 'resize') setResizing(summary?.variables.find(v => v.id === row.variableId));
     else setEditing(row);
   }
@@ -177,28 +184,34 @@ export function App() {
         <div className="editor-layout"><aside className="sidebar">
           <div className="sidebar-label">{t('browse')}</div><button className={`nav-item ${scope === 'all' ? 'selected' : ''}`} onClick={() => chooseScope('all')}><Layers3 size={17} />{t('allVariables')}<span>{number(summary.variables.filter(v => !v.deleted).length)}</span></button>
           <button className={`nav-item ${scope === -1 ? 'selected' : ''}`} onClick={() => chooseScope(-1)}><Braces size={18} />{summary.fileType === 'global' ? t('globalVariables') : t('sharedVariables')}<span>{number(summary.variables.filter(v => v.scope === -1 && !v.deleted).length)}</span></button>
-          {summary.characters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(summary.characters.length)}</span></div><div className="character-list">{summary.characters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.scope} · NO {c.no}</small>{c.csv && <small title={c.csv.filename}>CSV · {c.csv.fields.NAME || c.csv.fields.CALLNAME || c.csv.fields.NICKNAME || c.csv.filename}</small>}</span></button>)}</div></>}
+          {activeCharacters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(activeCharacters.length)}</span></div><div className="character-list">{activeCharacters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.index} · NO {c.no}</small>{c.csv && <small title={c.csv.filename}>CSV · {c.csv.fields.NAME || c.csv.fields.CALLNAME || c.csv.fields.NICKNAME || c.csv.filename}</small>}</span></button>)}</div></>}
           <div className="labels-card"><span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong><p className="csv-counts">{hasCsv ? <>{summary.labels > 0 && <span>{t('labelCount', { count: summary.labels })}</span>}{summary.characterLabels > 0 && <span>{t('characterCsvCount', { count: summary.characterLabels })}</span>}{summary.renames > 0 && <span>{t('renameCount', { count: summary.renames })}</span>}</> : t('labelsHint')}</p><button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{hasCsv ? t('addLabels') : t('loadCsv')}</button></div>
           <label className="sidebar-encoding">{t('readEncoding')}<select value={encoding} onChange={e => setEncoding(e.target.value as EncodingOption)}><EncodingOptions /></select></label>
           {summary.format === 'text' && <button className="text-button reread" disabled={!!busy} onClick={() => lastFile.current && void openFile(lastFile.current)}>{t('reread')}</button>}
         </aside><div className="editor-main">
           <div className="editor-title"><div><h2>{title}</h2><span>{t('variableCount', { count: selectedVariables.length })}</span></div><div className="segmented"><button className={!changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(false); setPage(0); if (selectedVariable?.deleted) setVariableId(undefined); }}>{t('showAll')}</button><button className={changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(true); chooseScope('all'); }}>{t('changes')} <span>{number(summary.changes)}</span></button></div></div>
+          {summary.format === 'binary' && summary.fileType === 'normal' && selectedCharacter && !selectedCharacter.deleted && <div className="character-toolbar"><span>{t('characterPosition')} <code>#{selectedCharacter.index} · NO {selectedCharacter.no}</code></span><div><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'clone', character: selectedCharacter })}>{t('cloneCharacter')}</button><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'delete', character: selectedCharacter })}>{t('deleteCharacter')}</button></div></div>}
           {characterCsv && <details className="character-csv"><summary>{t('characterCsv')} <span>{characterCsv.filename}</span></summary><dl>{characterFields.map(([field, label]) => characterCsv.fields[field] && <div key={field}><dt>{t(label)} <code>{field}</code></dt><dd>{characterCsv.fields[field]}</dd></div>)}</dl><p>{t('characterCsvHint', { no: characterCsv.no })}</p></details>}
-          <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${v.scope}` : ''} ({number(v.count)})</option>)}</select></div></div>
+          <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${charactersByScope.get(v.scope)?.index}` : ''} ({number(v.count)})</option>)}</select></div></div>
           {results.expandedSearch !== undefined && <p className="search-expansion">{t('searchExpanded')} <code>{results.expandedSearch || t('emptyString')}</code></p>}
           {summary.format === 'binary' && <div className="variable-toolbar"><button className="button secondary small" onClick={() => setAdding(true)} disabled={!!busy}>{t('addVariable')}</button>{selectedVariable && !selectedVariable.deleted && <button className="button secondary small" onClick={() => setDeleting(selectedVariable)} disabled={!!busy || querying}>{t('deleteVariable')}</button>}</div>}
           {summary.format === 'binary' && !selectedVariable?.deleted && !!selectedVariable?.dimensions.length && <div className="array-toolbar"><span>{t('arraySize')} <code>{selectedVariable.dimensions.join(' × ')}</code></span><button className="button secondary small" onClick={() => setResizing(selectedVariable)} disabled={!!busy || querying}>{t('resizeArray')}</button></div>}
           <div className="data-table-wrap" aria-busy={querying}><table className="data-table"><thead><tr><th>{t('variableIndex')}</th><th>{t('label')}</th><th>{changedOnly ? t('beforeAfter') : t('currentValue')}</th><th><span className="visually-hidden">{t('edit')}</span></th></tr></thead><tbody>
-            {results.rows.map(row => <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
+            {results.rows.map(row => 'character' in row ? <tr key={`${row.type}:${row.character.scope}`} className="modified">
+              <td><strong>{scopeName(row.character.scope, row.character.name)}</strong><small className="row-scope">NO {row.character.no}</small></td>
+              <td className="cell-label">{t(row.type === 'cloneCharacter' ? 'characterAdded' : 'characterDeleted')}</td>
+              <td><span className="variable-shape">{row.character.deleted ? t('deletedPosition', { index: String(row.character.originalIndex) }) : `${t('characterPosition')} #${row.character.index}`}<small>{t('variableCount', { count: row.character.variables })}</small></span></td>
+              <td className="row-actions"><button className="icon-button" aria-label={t(row.type === 'cloneCharacter' ? 'undoCharacterClone' : 'restoreCharacter', { name: scopeName(row.character.scope, row.character.name) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button></td>
+            </tr> : <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
               <td><div className="variable-name"><span className={`type-icon ${row.kind}`}>{row.kind === 'int' ? <Hash size={13} /> : <span>Aa</span>}</span><code>{row.name}{row.key !== '' && <span className="index">:{row.key.replace(/,/g, ':')}</span>}</code></div>{scope === 'all' && <small className="row-scope">{scopeName(row.scope, row.scopeName)}</small>}</td>
-              <td className="cell-label">{row.type === 'add' ? t('variableAdded') : row.type === 'delete' ? t('variableDeleted') : row.type === 'resize' ? t('arraySize') : row.label || <span className="muted">—</span>}</td><td>{row.type === 'add' || row.type === 'delete' ? <VariableShape variable={row} /> : <button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button>}</td>
-              <td className="row-actions">{row.changed ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'add' ? t('cancelVariableAddition', { name: row.name }) : row.type === 'delete' ? t('restoreVariable', { name: row.name }) : row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
+              <td className="cell-label">{row.automatic ? <span title={t('automaticReferenceHint')}>{t('automaticReference')}</span> : row.type === 'add' ? t('variableAdded') : row.type === 'delete' ? t('variableDeleted') : row.type === 'resize' ? t('arraySize') : row.label || <span className="muted">—</span>}</td><td>{row.type === 'add' || row.type === 'delete' ? <VariableShape variable={row} /> : <button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button>}</td>
+              <td className="row-actions">{row.changed && !row.automatic ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'add' ? t('cancelVariableAddition', { name: row.name }) : row.type === 'delete' ? t('restoreVariable', { name: row.name }) : row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={row.automatic ? t('automaticReferenceHint') : t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
             </tr>)}
           </tbody></table>{!results.rows.length && <div className="empty-results"><Search size={29} /><strong>{changedOnly ? t('noChanges') : t('noResults')}</strong><p>{changedOnly ? t('noChangesHint') : t('noResultsHint')}</p></div>}</div>
           <div className="pagination"><span>{t('itemCount', { count: results.total })}{querying && <LoaderCircle className="spin" size={13} />}</span><div><button className="icon-button" aria-label={t('previousPage')} disabled={results.page === 0 || querying} onClick={() => setPage(results.page - 1)}><ChevronLeft size={17} /></button><label><span className="visually-hidden">{t('page')}</span><input aria-label={t('page')} key={results.page} defaultValue={results.page + 1} inputMode="numeric" onKeyDown={e => { if (e.key === 'Enter') { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) setPage(Math.max(0, Math.min(results.pages - 1, Math.floor(n) - 1))); } }} /></label><span>/ {number(results.pages)}</span><button className="icon-button" aria-label={t('nextPage')} disabled={results.page >= results.pages - 1 || querying} onClick={() => setPage(results.page + 1)}><ChevronRight size={17} /></button></div></div>
         </div></div>
         {warnings.length > 0 && <details className="csv-warnings"><summary>{t('csvWarnings', { count: warnings.length })}</summary><ul>{warnings.slice(0, 100).map((w, i) => <li key={i}>{message(w)}</li>)}</ul>{warnings.length > 100 && <p>{t('firstWarnings')}</p>}</details>}
-        <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.addedVariables || summary.deletedVariables ? t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables }) : summary.resizedArrays ? t('changesWithResizes', { values: summary.changes - summary.resizedArrays, arrays: summary.resizedArrays }) : summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
+        <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.addedCharacters || summary.deletedCharacters ? <>{t('characterChanges', { added: summary.addedCharacters, deleted: summary.deletedCharacters })}<small>{t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables })}</small></> : summary.addedVariables || summary.deletedVariables ? t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables }) : summary.resizedArrays ? t('changesWithResizes', { values: summary.valueChanges, arrays: summary.resizedArrays }) : summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
       </section>}
     </main>
     <footer><span><LockKeyhole size={13} />{t('footerPrivacy')}</span><div>{t('baseline')}<span className="footer-dot">·</span><a href="https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b" target="_blank" rel="noreferrer">{t('formatReference')}<ArrowUpRight size={12} /></a></div></footer>
@@ -212,6 +225,13 @@ export function App() {
     {deleting && <DeleteVariableDialog variable={deleting} displayScope={scopeName(deleting.scope, summary?.characters.find(c => c.scope === deleting.scope)?.name)} onClose={() => setDeleting(undefined)} onDelete={async () => {
       setSummary(await rpc<Summary>({ type: 'deleteVariable', id: deleting.id })); setVariableId(undefined); setPage(0); setDeleting(undefined);
     }} />}
+    {characterAction && <CharacterDialog action={characterAction.type} character={characterAction.character} displayName={scopeName(characterAction.character.scope, characterAction.character.name)} onClose={() => setCharacterAction(undefined)} onSave={async () => {
+      if (characterAction.type === 'clone') {
+        const result = await rpc<{ scope: number; summary: Summary }>({ type: 'cloneCharacter', scope: characterAction.character.scope });
+        setSummary(result.summary); chooseScope(result.scope); setChangedOnly(false); setSearch('');
+      } else { setSummary(await rpc<Summary>({ type: 'deleteCharacter', scope: characterAction.character.scope })); chooseScope(-1); }
+      setCharacterAction(undefined);
+    }} />}
     {help && <Modal onClose={() => setHelp(false)} title={summary ? t('fileHelpTitle') : t('helpTitle')}><div className="help-content">
       {summary && <dl><dt>{t('fileFormat')}</dt><dd>{summary.format === 'binary' ? t('binary') : t('text')} · {summary.formatVersion || t('legacyFormat')}</dd><dt>{t('gameVersion')}</dt><dd>{summary.gameCode} / {summary.gameVersion}</dd><dt>{t('saveDescription')}</dt><dd>{summary.description || t('none')}</dd><dt>{t('encoding')}</dt><dd>{formatEncoding(summary.encoding)}</dd></dl>}
       <ol><li>{t('helpOpen')}</li><li>{t('helpEdit')}</li><li>{t('helpDownload')}</li></ol>
@@ -220,6 +240,7 @@ export function App() {
       <p>{t('helpEncoding')}</p>
       <p>{t('helpResize')}</p>
       <p>{t('helpVariables')}</p>
+      <p>{t('helpCharacters')}</p>
       <p className="help-note">{t('helpLimits')}</p>
     </div></Modal>}
   </div>;
@@ -228,6 +249,29 @@ export function App() {
 function VariableShape({ variable }: { variable: Pick<VariableSummary, 'kind' | 'dimensions' | 'section'> }) {
   const { t } = useLocale();
   return <span className="variable-shape">{t(variable.kind === 'int' ? 'integerType' : 'stringType')} · {variable.dimensions.length ? variable.dimensions.join(' × ') : t('scalar')}{variable.section && <small>{t(variable.section === 'builtin' ? 'builtinVariable' : 'userVariable')}</small>}</span>;
+}
+function CharacterDialog({ action, character, displayName, onClose, onSave }: { action: 'clone' | 'delete'; character: CharacterSummary; displayName: string; onClose: () => void; onSave: () => Promise<void> }) {
+  const { t, message } = useLocale();
+  const [pending, setPending] = useState(false), [error, setError] = useState<Message>();
+  const [references, setReferences] = useState<ReferenceChange[]>();
+  useEffect(() => {
+    if (action !== 'delete') return;
+    let active = true;
+    rpc<ReferenceChange[]>({ type: 'previewDeleteCharacter', scope: character.scope })
+      .then(value => { if (active) setReferences(value); }).catch(e => { if (active) setError(messageOf(e)); });
+    return () => { active = false; };
+  }, [action, character.scope]);
+  const title = t(action === 'clone' ? 'cloneCharacter' : 'deleteCharacter');
+  return <Modal title={title} onClose={() => { if (!pending) onClose(); }}><form onSubmit={async e => {
+    e.preventDefault(); setPending(true); setError(undefined);
+    try { await onSave(); } catch (e) { setError(messageOf(e)); setPending(false); }
+  }}>
+    <div className="edit-meta"><strong>{displayName}</strong><span>#{character.index} · NO {character.no}</span><span>{t('variableCount', { count: character.variables })}</span></div>
+    <p className="input-hint">{t(action === 'clone' ? 'cloneCharacterHint' : 'deleteCharacterHint')}</p>
+    {action === 'delete' && <><p className="input-hint">{t('characterReferenceHint')}</p><div className="reference-preview"><strong>{t('referencePreview')}</strong>{references ? references.length ? <><dl>{references.slice(0, 50).map((r, i) => <div key={i}><dt><code>{r.name}</code></dt><dd>{r.before} <ArrowRight size={12} /> {r.after}</dd></div>)}</dl><small>{t('itemCount', { count: references.length })}</small></> : <p>{t('noReferenceChanges')}</p> : !error && <LoaderCircle size={16} className="spin" />}</div></>}
+    {error && <p className="field-error" role="alert">{message(error)}</p>}
+    <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose} disabled={pending} data-initial-focus>{t('cancel')}</button><button type="submit" className="button primary" disabled={pending || (action === 'delete' && !references)}>{title}</button></div>
+  </form></Modal>;
 }
 function AddVariableDialog({ summary, initialScope, onClose, onSave }: { summary: Summary; initialScope: number; onClose: () => void; onSave: (variable: NewVariable) => Promise<void> }) {
   const { t, message } = useLocale();
@@ -247,7 +291,7 @@ function AddVariableDialog({ summary, initialScope, onClose, onSave }: { summary
   }}>
     <fieldset className="variable-form" disabled={pending}>
       <label>{t('variableName')}<input className="edit-input" value={name} onChange={e => setName(e.target.value)} autoComplete="off" data-initial-focus /></label>
-      <label>{t('variableScope')}<select className="edit-input" value={scope} onChange={e => setScope(Number(e.target.value))}><option value={-1}>{t(summary.fileType === 'global' ? 'globalVariables' : 'sharedVariables')}</option>{summary.characters.map(c => <option key={c.scope} value={c.scope}>#{c.scope} · {c.name || t('character', { index: String(c.scope) })}</option>)}</select></label>
+      <label>{t('variableScope')}<select className="edit-input" value={scope} onChange={e => setScope(Number(e.target.value))}><option value={-1}>{t(summary.fileType === 'global' ? 'globalVariables' : 'sharedVariables')}</option>{summary.characters.filter(c => !c.deleted).map(c => <option key={c.scope} value={c.scope}>#{c.index} · {c.name || t('character', { index: String(c.index) })}</option>)}</select></label>
       {scope >= 0 && <label>{t('variableSection')}<select className="edit-input" value={section} onChange={e => setSection(e.target.value as 'builtin' | 'user')}><option value="user">{t('userVariable')}</option><option value="builtin">{t('builtinVariable')}</option></select></label>}
       <div className="resize-dimensions"><label>{t('variableKind')}<select className="edit-input" value={kind} onChange={e => setKind(e.target.value as 'int' | 'string')}><option value="int">{t('integerType')}</option><option value="string">{t('stringType')}</option></select></label><label>{t('variableRank')}<select className="edit-input" value={rank} onChange={e => setRank(Number(e.target.value))}>{Array.from({ length: maxRank - minRank + 1 }, (_, i) => i + minRank).map(n => <option key={n} value={n}>{n || t('scalar')}</option>)}</select></label></div>
       {!!rank && <div className="resize-dimensions">{lengths.slice(0, rank).map((length, axis) => <label key={axis}>{t('dimensionSize', { axis: axis + 1 })}<input className="edit-input mono" value={length} inputMode="numeric" onChange={e => setLengths(values => values.map((n, i) => i === axis ? e.target.value : n))} /></label>)}</div>}
@@ -286,7 +330,7 @@ function Modal({ title, children, onClose }: { title: string; children: React.Re
   }, []);
   return <dialog ref={ref} className="modal" onCancel={onClose} aria-labelledby="dialog-title"><div className="modal-heading"><h2 id="dialog-title">{title}</h2><button className="icon-button" aria-label={t('close')} onClick={onClose}><X size={19} /></button></div>{children}</dialog>;
 }
-function EditDialog({ row, displayScope, onClose, onSave }: { row: Row; displayScope: string; onClose: () => void; onSave: (value: string) => Promise<void> }) {
+function EditDialog({ row, displayScope, onClose, onSave }: { row: VariableRow; displayScope: string; onClose: () => void; onSave: (value: string) => Promise<void> }) {
   const { t, message } = useLocale();
   const [value, setValue] = useState(row.value);
   const [error, setError] = useState<Message>();

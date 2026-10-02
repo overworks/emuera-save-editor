@@ -51,7 +51,17 @@ Names must start with a letter or underscore and contain only letters, combining
 
 To remove a variable, select it in **Variable group** and choose **Delete variable**. **Changes** lists additions and deletions with individual undo. Deleting an original variable hides its values and size edits until restored; deleting a newly added variable cancels it and its edits. If a new variable occupies a deleted name, cancel the addition before restoring the original. **Revert all** restores the original bytes, including after deleting every variable in a scope.
 
-These operations change records in the save. They do not add or remove declarations in the game: names, types, scope, and dimensions must match what the game expects, and missing or unknown records may be ignored or use game defaults. Character creation/deletion and text variable addition/deletion remain unsupported. See [binary variable semantics and source evidence](docs/binary-variables.md).
+These operations change records in the save. They do not add or remove declarations in the game: names, types, scope, and dimensions must match what the game expects, and missing or unknown records may be ignored or use game defaults. Text variable addition/deletion remains unsupported. See [binary variable semantics and source evidence](docs/binary-variables.md).
+
+## Duplicating and deleting binary characters
+
+In a normal binary save, select a character and choose **Duplicate character**. An independent copy is appended with the character's current values, array sizes, and variables, including your edits. Its `NAME` and `NO` are copied too; edit them afterward if needed. `NO` is separate from the displayed save position (`#0`, `#1`, …) and does not have to be unique. Empty characters can be copied, but this feature cannot create a character without an existing character to copy. It does not initialize characters from game scripts or CSV files.
+
+**Delete character** shows a confirmation with affected standard references. Later characters move up one position. Integer cells `TARGET:0`, `ASSI:0`, `MASTER:0`, and `PLAYER:0` keep referring to the same character; a reference to the deleted character becomes `-1`. Negative and already out-of-range values are preserved. Game-specific references, other array cells, `NO`, and `RELATION` indices are not adjusted. Review any references your game stores elsewhere.
+
+**Changes** includes character operations and automatic reference adjustments. Undoing an original character's deletion restores its values, variable edits, and original position, and restores references unless you edited them. Manually edited standard references follow the character at the position entered at that time. To override an automatic adjustment, edit the reference value; to undo the adjustment, undo the character operation. Deleting a copy cancels that copy and its edits. **Revert all** restores the original bytes, even after deleting every character. Text saves and global saves do not offer these operations.
+
+See [character semantics and source evidence](docs/binary-characters.md) for reference rules and verification limits.
 
 ## CSV labels and encoding
 
@@ -75,20 +85,20 @@ The baseline is standard **Emuera 1.824**, preserved at commit [`85db4cbd`](http
 | Text saves | Legacy and extended sections; UTF-8 with or without BOM, and CP932/Shift-JIS |
 | Binary saves | Format version 1808 |
 | Values | Signed 64-bit integers, strings, and arrays up to three dimensions |
-| Editing | Existing values; implicit zero/empty binary cells; binary array resizing with unchanged rank; binary variable addition/deletion |
+| Editing | Existing values; implicit zero/empty binary cells; binary array resizing with unchanged rank; binary variable addition/deletion; normal binary character duplication/deletion |
 | Size limits | 64 MiB per file; 100 million cells per binary array; 1 million stored values; 1 million text lines |
 
 Text saves sometimes called “CSV saves” use Emuera's own format and are different from the CSV files used for labels. Text extension markers for 1700, 1708, 1729, 1803, and 1808 are recognized, with compatibility checks focused on the baseline engine's 1808 output.
 
-Character creation/deletion, text variable addition/deletion, text array resizing, format conversion, ERB/ERH execution, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. Character CSV metadata and search substitutions do not infer or execute game structure or scripts.
+Creating characters without copying an existing character, text character/variable addition/deletion, text array resizing, format conversion, ERB/ERH execution, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. Character CSV metadata and search substitutions do not infer or execute game structure or scripts.
 
-Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Automated compatibility checks use synthetic saves generated and read by the original engine's save code. A user has also confirmed loading, editing, and exporting actual save data. This report does not establish in-game reloading or compatibility with every game or fork, or validate array resizing and variable addition/deletion with real saves.
+Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Automated compatibility checks use synthetic saves generated and read by the original engine's save code. A user has also confirmed loading, editing, and exporting actual save data. This report does not establish in-game reloading or compatibility with every game or fork, or validate array resizing, variable addition/deletion, and character duplication/deletion with real saves.
 
 ## Planned support
 
-Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, character CSV name metadata, and `_Rename.csv` search substitutions are implemented. Remaining work includes:
+Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, normal binary character duplication/deletion, character CSV name metadata, and `_Rename.csv` search substitutions are implemented. Remaining work includes:
 
-- Character creation/deletion and text variable addition/deletion.
+- Character creation without copying, and text character/variable addition/deletion.
 - Text array resizing and format conversion, with explicit size information where required.
 - EM/EM+EE-specific formats, with separate format evidence and fixtures.
 - Optional local session recovery, offline reopening/PWA, and a `file://` entry point.

@@ -111,3 +111,64 @@ for (const path of ['tests/fixtures/normal-binary.sav', 'tests/fixtures/global-b
   editor.reset(); assert.deepEqual(editor.serialize(), raw);
   console.log(`✓ ${path}: variable additions/deletions, empty scopes, and exact reset accepted by the original engine reader`);
 }
+
+const characterFixture = '.reference/edited/characters-base.sav';
+runOracle('generate-characters', characterFixture);
+const characterBytes = new Uint8Array(readFileSync(characterFixture));
+const characterBefore: Record<string, string> = JSON.parse(runOracle('read', characterFixture, 'normal', 'utf-16le'));
+const characterEditor = new Editor(parseSave(characterBytes, 'characters.sav'));
+const characterVariable = (scope: number, name: string) => characterEditor.summary().variables.find(v => v.scope === scope && v.name === name && !v.deleted)!;
+const characterExpected = (sources: { scope: number; data: Record<string, string> }[], references: Record<string, string> = {}) => {
+  const result = Object.fromEntries(Object.entries(characterBefore).filter(([key]) => !/^\d+:/.test(key)));
+  const layout: string[] = [];
+  for (const [index, source] of sources.entries()) {
+    const prefix = `${source.scope}:`;
+    for (const [key, value] of Object.entries(source.data)) if (key.startsWith(prefix)) result[`${index}:${key.slice(prefix.length)}`] = value;
+    for (const record of JSON.parse(source.data.layout) as string[]) if (record.startsWith(prefix)) layout.push(`${index}:${record.slice(prefix.length)}`);
+  }
+  layout.push(...(JSON.parse(characterBefore.layout) as string[]).filter(record => record === 'eof' || record.startsWith('-1:')));
+  result.chars = String(sources.length); result.layout = JSON.stringify(layout);
+  for (const [name, value] of Object.entries(references)) result[`-1:${name}:0`] = value;
+  return result;
+};
+const checkCharacters = (name: string, expected: Record<string, string>) => {
+  const path = `.reference/edited/characters-${name}.sav`; writeFileSync(path, characterEditor.serialize());
+  assert.deepEqual(JSON.parse(runOracle('read', path, 'normal', 'utf-16le')), expected, `characters ${name}: count, scope order, records, dimensions and every value`);
+  console.log(`✓ characters ${name}: count, complete records/values and references accepted by the original engine reader`);
+};
+const source = (scope: number, data = characterBefore) => ({ scope, data });
+
+// The expected dictionaries below originate from C#, with explicit edits and scope remapping.
+const snapshot = { ...characterBefore }, editedAbl = characterVariable(0, 'ABL');
+characterEditor.resize(editedAbl.id, [5]); characterEditor.set(editedAbl.id, '0', '-9223372036854775808'); characterEditor.set(editedAbl.id, '4', '9223372036854775807');
+Object.assign(snapshot, { '0:ABL:dimensions': '5', '0:ABL:0': '-9223372036854775808', '0:ABL:3': '0', '0:ABL:4': '9223372036854775807' });
+characterEditor.deleteVariable(characterVariable(0, 'CUSTOM').id);
+for (const key of Object.keys(snapshot)) if (key.startsWith('0:CUSTOM:')) delete snapshot[key];
+const extra = characterEditor.addVariable({ scope: 0, name: 'EXTRA', kind: 'string', dimensions: [1, 2] }); characterEditor.set(extra, '0,1', '複製😀');
+Object.assign(snapshot, { '0:EXTRA:dimensions': '1,2', '0:EXTRA:0,0': '', '0:EXTRA:0,1': '複製😀' });
+const snapshotLayout = (JSON.parse(snapshot.layout) as string[]).filter(record => !record.startsWith('0:CUSTOM:'));
+snapshotLayout.splice(snapshotLayout.indexOf('0:end'), 0, '0:EXTRA:18'); snapshot.layout = JSON.stringify(snapshotLayout);
+characterEditor.cloneCharacter(0); characterEditor.deleteCharacter(1);
+characterEditor.set(characterVariable(0, 'NAME').id, '', '後で変更');
+checkCharacters('edited-copy-and-delete', characterExpected([source(0, { ...snapshot, '0:NAME:': '後で変更' }), source(2), source(0, snapshot)], { TARGET: '1', ASSI: '-1', PLAYER: '1' }));
+characterEditor.reset(); assert.deepEqual(characterEditor.serialize(), characterBytes);
+
+for (const scope of [0, 1, 2]) characterEditor.deleteCharacter(scope);
+checkCharacters('delete-all', characterExpected([], { TARGET: '-1', ASSI: '-1', MASTER: '-1', PLAYER: '-1' }));
+for (const scope of [2, 0, 1]) characterEditor.restoreCharacter(scope);
+assert.deepEqual(characterEditor.serialize(), characterBytes);
+
+characterEditor.cloneCharacter(1); const unseparated = characterEditor.cloneCharacter(2);
+characterEditor.addVariable({ scope: unseparated, name: 'NEW_CUSTOM', kind: 'string', dimensions: [0] });
+const withSeparator: Record<string, string> = { ...characterBefore, '2:NEW_CUSTOM:dimensions': '0' }, separatedLayout: string[] = JSON.parse(characterBefore.layout);
+separatedLayout.splice(separatedLayout.indexOf('2:end'), 0, '2:separator', '2:NEW_CUSTOM:17'); withSeparator.layout = JSON.stringify(separatedLayout);
+checkCharacters('empty-and-unseparated-copies', characterExpected([source(0), source(1), source(2), source(1), source(2, withSeparator)]));
+characterEditor.reset(); assert.deepEqual(characterEditor.serialize(), characterBytes);
+
+characterEditor.deleteCharacter(0); characterEditor.set(characterVariable(-1, 'TARGET').id, '0', '0'); characterEditor.restoreCharacter(0);
+checkCharacters('manual-reference-restore', characterExpected([source(0), source(1), source(2)], { TARGET: '1' }));
+const referencedCopy = characterEditor.cloneCharacter(0); characterEditor.set(characterVariable(-1, 'TARGET').id, '0', '3'); characterEditor.deleteCharacter(1);
+checkCharacters('reference-to-copy', characterExpected([source(0), source(2), source(0)], { TARGET: '2', ASSI: '-1', PLAYER: '1' }));
+characterEditor.deleteCharacter(referencedCopy);
+checkCharacters('cancel-referenced-copy', characterExpected([source(0), source(2)], { TARGET: '-1', ASSI: '-1', PLAYER: '1' }));
+characterEditor.reset(); assert.deepEqual(characterEditor.serialize(), characterBytes);
