@@ -106,12 +106,12 @@ Out-of-range integers, characters unavailable in the original text encoding, res
 
 ## Planned support
 
-Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, normal text/binary character duplication/deletion, character CSV name metadata, `_Rename.csv` search substitutions, and optional local session recovery are implemented. Remaining work includes:
+Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, normal text/binary character duplication/deletion, character CSV name metadata, `_Rename.csv` search substitutions, optional local session recovery, and offline reopening/PWA installation are implemented. Remaining work includes:
 
 - Character creation without copying, and individual text variable addition/deletion.
 - Text array resizing and format conversion, with explicit size information where required.
 - EM/EM+EE-specific formats, with separate format evidence and fixtures.
-- Offline reopening/PWA and a `file://` entry point.
+- A `file://` entry point.
 - ERB/ERH execution, which requires a separate execution design.
 
 These items remain unsupported until implemented and verified. This list does not imply a delivery date.
@@ -122,13 +122,23 @@ These items remain unsupported until implemented and verified. This list does no
 
 Wait for **Saved in this browser** before leaving. Turning recovery off asks for confirmation and deletes the stored workspace while leaving your open work in memory. Storage errors leave live edits available and retain the last committed recovery; use **Retry saving** or download your work. If another tab changes or deletes recovery, stale tabs stop saving rather than overwrite it.
 
-Recovery uses IndexedDB in the current browser profile and site path; it does not sync between browsers or devices. The recovery journal is limited to 100,000 operations and 128 MiB including the original file and imported CSVs. If this limit is reached, download the edited save and reopen it to start a new workspace. Browser data deletion, storage eviction, or closing a private browsing session can remove recovery, so keep downloaded backups. Recovery does not provide offline reopening or PWA installation.
+Recovery uses IndexedDB in the current browser profile and site path; it does not sync between browsers or devices. The recovery journal is limited to 100,000 operations and 128 MiB including the original file and imported CSVs. If this limit is reached, download the edited save and reopen it to start a new workspace. Browser data deletion, storage eviction, or closing a private browsing session can remove recovery, so keep downloaded backups. Offline app preparation and session recovery are separate: enable recovery to restore your work when reopening offline.
+
+## Offline use and installation
+
+Visit the production app while connected and wait for **Ready to reopen offline** below the recovery controls. This browser can then reopen the app, including its sample and all three languages, without a connection. The first visit needs a connection. Offline access requires HTTPS or localhost and a browser that permits service workers and app storage; the development server does not prepare offline access. Browser data deletion or storage eviction can remove the cached app. Expand **Offline use & installation** to retry preparation or check for updates.
+
+To continue your edits after reopening, enable **Save work in this browser** and wait for **Saved in this browser**. Otherwise, download your edits before closing. Installing the app does not enable recovery, and turning off recovery deletes the saved session while keeping the cached app available.
+
+Where supported, choose **Install app** or use the browser's install menu. On iPhone or iPad, use **Share → Add to Home Screen**. Installation is optional and availability varies by browser. You can also keep using a normal browser tab. An installed launch uses the browser's preferred supported language; language-specific bookmarks retain their `lang` URL parameter.
+
+When **An app update is ready** appears, apply any unfinished dialog input, then save or download your work in every app window. Close all tabs and installed windows for this app and reopen it to use the new version. An update never automatically reloads an editing window; refreshing one tab alone may leave the previous version active while other app windows remain open. Failed update preparation keeps the previous offline version available. Direct `file://` execution remains unsupported.
 
 ## Privacy and session data
 
-Save and CSV contents stay in browser memory unless you enable local session recovery, which also stores them in this browser's IndexedDB. The app has no upload API, analytics, remote fonts, or CDN dependencies. It does not use cookies or localStorage, and language preference remains in the URL.
+Save and CSV contents stay in browser memory unless you enable local session recovery, which also stores them in this browser's IndexedDB. Offline preparation automatically caches only shipped app files, including the synthetic sample, in the browser's Cache Storage; imported saves and CSVs are not placed in that cache. The app has no upload API, analytics, remote fonts, or CDN dependencies. It does not use cookies or localStorage, and language preference remains in the URL.
 
-After the app loads, editing, CSV loading, downloading, and enabled local saving work without a network connection. Without local recovery, refreshing or closing the page discards your session. Offline reopening/PWA installation and opening the HTML directly through `file://` are not supported.
+After the app loads, editing, CSV loading, downloading, and enabled local saving work without a network connection. Offline reopening is available after app preparation completes. Without local recovery, refreshing or closing the page discards your session even if the app is installed.
 
 ## Further reading and credits
 

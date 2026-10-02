@@ -1,0 +1,15 @@
+{
+  "id": "./",
+  "name": "Emuera Save Studio",
+  "short_name": "Save Studio",
+  "description": "Edit Emuera saves locally in your browser.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f7f9",
+  "theme_color": "#5465dc",
+  "icons": [
+    { "src": "./icons/app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./icons/app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -19,7 +19,7 @@ The application uses React, TypeScript, and Vite. Keep dependency changes reflec
 | --- | --- |
 | `npm run dev` | Start the development server |
 | `npm test` | Run core tests with Vitest |
-| `npm run build` | Check TypeScript and produce `dist/` |
+| `npm run build` | Check TypeScript, produce `dist/`, and generate the verified offline precache |
 | `npm run preview` | Serve the existing `dist/` build locally |
 | `npm run test:e2e` | Run Playwright tests against the preview server |
 | `npm run fixtures` | Regenerate synthetic saves and the bundled demo using the original engine writer; requires .NET 8 |
@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion, text/binary character duplication/deletion and reference previews, undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, mobile dialog behavior, and opt-in local recovery across reloads, storage errors and multiple tabs.
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion, text/binary character duplication/deletion and reference previews, undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, mobile dialog behavior, and opt-in local recovery across reloads, storage errors and multiple tabs. Offline tests additionally serve the same build from temporary loopback ports to exercise subpaths, content-mismatched updates, separate cache scopes, and cold browser restarts with a persistent test profile.
 
 For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
 
@@ -67,6 +67,7 @@ For documentation-only changes, check relative links, commands against `package.
 - Preserve exact signed 64-bit values, original bytes outside edited regions, sparse array handling, and validation before export. Follow the detailed invariants in [AGENTS.md](AGENTS.md).
 - Keep user files in browser memory unless the user enables local session recovery. Maintain the static, browser-only architecture without adding upload services, external runtime assets, analytics, or incidental persistence. IndexedDB recovery must remain optional and off by default; do not store files or preferences elsewhere.
 - Recovery changes need journal tests and browser checks for restoration, exact reset, disabled-by-default behavior, deletion, failed opens, quotas, unsupported records and stale-tab conflicts. Keep the original file and validated operations separate from exported bytes, and never replace undo history with an edited save. Wait for transaction completion before displaying success; keep live edits usable if storage fails.
+- Offline app caching is separate from opt-in recovery. Cache only build-listed assets; never add imported files or user-specific URLs. Keep integrity verification, scope isolation, safe update waiting and graceful storage failure behavior. Test real service workers with offline reloads/tab reopening, browser restarts, incomplete/corrupt installs, cache repair and multiple open tabs. Installation tests check manifest assets, Chromium installability and browser events; native OS installation requires a manual check on the target browser. See [offline architecture](docs/offline-app.md).
 - Follow the surrounding TypeScript style: strict types, two-space indentation, single quotes, and semicolons. Prefer existing abstractions and dependencies where they fit the change.
 - Preserve keyboard navigation, accessible control names, dialog focus, error feedback, and narrow-screen usability. The product UI supports English, Korean, and Japanese; verify translated text at narrow widths too.
 - Add regression coverage for meaningful behavior changes, especially save-format fixes. Use small synthetic examples instead of committing a user's save or game assets. Keep reference comparisons independent of the TypeScript serializer.
@@ -107,7 +108,9 @@ npm run build
 npm run preview
 ```
 
-Publish the entire `dist/` directory through an HTTP(S) static host, including all generated assets. The Vite configuration uses `base: './'` for relative asset paths, so the build can be served under a subdirectory. No backend API or routing rewrite rules are required. Verify the bundled sample and Worker in the hosted location. Direct `file://` use and offline reopening through a service worker are not supported.
+Publish the entire `dist/` directory through an HTTP(S) static host, including `sw.js`, `manifest.webmanifest`, icons and all generated assets. Always use `npm run build`: invoking Vite alone omits the generated service worker. The Vite configuration uses `base: './'` for relative asset paths, so the build can be served under a subdirectory. No backend API or routing rewrite rules are required. Serve `sw.js` as JavaScript and allow update checks; do not give it an immutable cache policy. Deploy the complete build together and do not rewrite its contents: precaching verifies asset hashes and rejects mixed releases.
+
+Offline reopening and PWA installation need HTTPS (or localhost for development checks). The regular development server does not register a service worker; use the production preview for offline checks. Verify the bundled sample, editor Worker, offline readiness and offline reopening at the full hosted path. New versions wait until every app tab/installed window using the previous version is closed; merely refreshing one tab is not a reliable way to activate an update. Direct `file://` use remains unsupported.
 
 The [GitHub Pages workflow](.github/workflows/pages.yml) publishes to [Emuera Save Studio](https://overworks.github.io/emuera-save-editor/) when changes are pushed to `main`. It uses Node.js 24, installs locked dependencies with `npm ci`, runs unit tests, builds the app, and runs the Chromium browser suite before uploading `dist/`. Deployment uses the `github-pages` environment. Actions are pinned to commit SHAs; update the SHA and version comment together when upgrading them.
 

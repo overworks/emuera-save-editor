@@ -3,5 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { LocaleProvider } from './locale';
 import './styles.css';
+import { startOffline } from './pwa';
 
+startOffline();
 createRoot(document.getElementById('root')!).render(<StrictMode><LocaleProvider><App /></LocaleProvider></StrictMode>);

@@ -12,6 +12,7 @@ import { LanguageSelect, useLocale } from './locale';
 import { GamePresets, PresetLabel } from './GamePresets';
 import { FileDropZone } from './FileDropZone';
 import { GitHubIcon } from './GitHubIcon';
+import { OfflineApp } from './OfflineApp';
 import { gamePresets, presetReference, presetSearchMatches } from './presets';
 import demoUrl from './assets/demo.sav?url';
 
@@ -222,6 +223,7 @@ export function App() {
         </div>
         {recovery.error && <div className="recovery-error" role="alert"><span>{message(recovery.error)}</span>{recovery.enabled && summary && <button className="text-button" onClick={() => void retryRecovery()} disabled={storageBusy || !!busy}>{t('retryRecovery')}</button>}</div>}
       </section>
+      <OfflineApp />
       {!summary ? <section className="welcome">
         <div className="welcome-intro"><div className="eyebrow"><span />{t('welcomeEyebrow')}</div>
           <h1>{t('welcomeTitle')}<br /><span>{t('welcomeAccent')}</span></h1>
