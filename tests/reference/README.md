@@ -27,6 +27,8 @@ For binary saves, the adapter also reports each array's saved dimensions, includ
 
 The format evidence for resizing is the per-axis `ReadInt32()` lengths in the upstream `EraBinaryDataReader1808.ReadIntArray*` and `ReadStrArray*` methods. The reader uses separate destination array sizes supplied by the game and may copy only the overlapping region. Changing a save's dimensions therefore does not change the game's variable declarations. The adapter allocates destination arrays using the saved dimensions to check every exported cell.
 
+For variable addition/deletion, the binary reader also reports record names, scopes, type tags, order, separators, and character ends. Comparisons cover both binary fixtures plus a temporary original-writer fixture containing an empty character and a character without a user-defined section. The check adds shared/global scalars and arrays of every type/rank, an empty array, and built-in and user-defined character records; it deletes an original record, then separately deletes all original records. Complete values, dimensions, and layout must match explicitly constructed expectations, and reset must restore the original bytes. The temporary fixture is generated under `.reference/edited` without replacing committed fixtures. See [binary variable source evidence](../../docs/binary-variables.md) for section and rank restrictions.
+
 This checks save-code compatibility without running a game. It does not validate game script rules, actual user saves, or every Emuera fork. The C# code is used only for development checks and is not included in the browser bundle.
 
 ## Running the checks

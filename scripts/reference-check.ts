@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { Editor, parseSave } from '../src/core/editor';
+import type { NewVariable } from '../src/core/editor';
 import { coordinates, cellCount } from '../src/core/model';
 import { buildOracle, runOracle } from './oracle';
 
@@ -60,4 +61,53 @@ for (const filename of readdirSync('tests/fixtures').filter(f => f.endsWith('.sa
     resized.reset(); assert.deepEqual(resized.serialize(), doc.original);
     console.log(`✓ ${filename}: ${mode} array sizes and values accepted by the original engine reader`);
   }
+}
+
+// Exercise record membership/order and character separators with the original reader/writer.
+const structureFixture = '.reference/edited/structure-base.sav';
+runOracle('generate-structure', structureFixture);
+for (const path of ['tests/fixtures/normal-binary.sav', 'tests/fixtures/global-binary.sav', structureFixture]) {
+  const raw = new Uint8Array(readFileSync(path)), editor = new Editor(parseSave(raw, 'structure.sav'));
+  const before: Record<string, string> = JSON.parse(runOracle('read', path, editor.document.fileType, editor.document.encoding));
+  const expected = { ...before }, layout: string[] = JSON.parse(before.layout);
+  const add = (variable: NewVariable) => {
+    const id = editor.addVariable(variable), rank = variable.dimensions.length;
+    const end = variable.scope === -1 ? 'eof' : `${variable.scope}:end`, separator = `${variable.scope}:separator`;
+    if (variable.scope >= 0 && variable.section !== 'builtin' && !layout.includes(separator)) layout.splice(layout.indexOf(end), 0, separator);
+    const anchor = variable.section === 'builtin' && layout.includes(separator) ? separator : end;
+    layout.splice(layout.indexOf(anchor), 0, `${variable.scope}:${variable.name}:${(variable.kind === 'string' ? 16 : 0) + rank}`);
+    const prefix = `${variable.scope}:${variable.name}:`;
+    if (rank) expected[prefix + 'dimensions'] = variable.dimensions.join(',');
+    for (let i = 0; i < cellCount(variable.dimensions); i++) expected[prefix + coordinates(i, variable.dimensions)] = variable.kind === 'int' ? '0' : '';
+    if (cellCount(variable.dimensions)) {
+      const key = coordinates(cellCount(variable.dimensions) - 1, variable.dimensions), value = variable.kind === 'int' ? '-9223372036854775808' : '追加😀';
+      editor.set(id, key, value); expected[prefix + key] = value;
+    }
+  };
+  for (const kind of ['int', 'string'] as const) for (const rank of [0, 1, 2, 3]) add({ scope: -1, name: `NEW_${kind}_${rank}`, kind, dimensions: Array(rank).fill(2) });
+  add({ scope: -1, name: 'EMPTY', kind: 'string', dimensions: [0, 3] });
+  for (let scope = 0; scope < editor.document.characterCount; scope++) {
+    // Add the custom record first to ensure later built-ins still precede its separator.
+    add({ scope, name: 'NEW_CUSTOM', kind: 'int', dimensions: [2, 3], section: 'user' });
+    add({ scope, name: 'NICKNAME', kind: 'string', dimensions: [], section: 'builtin' });
+  }
+  const removed = editor.document.variables[0];
+  if (removed) {
+    editor.deleteVariable(removed.id);
+    const prefix = `${removed.scope}:${removed.name}:`;
+    for (const key of Object.keys(expected)) if (key.startsWith(prefix)) delete expected[key];
+    layout.splice(layout.findIndex(record => record.startsWith(prefix)), 1);
+  }
+  expected.layout = JSON.stringify(layout);
+  const output = `.reference/edited/structure-${path.split('/').at(-1)}`;
+  writeFileSync(output, editor.serialize());
+  assert.deepEqual(JSON.parse(runOracle('read', output, editor.document.fileType, editor.document.encoding)), expected, `${path}: added/deleted records, exact types, order, separators and all values`);
+  editor.reset(); assert.deepEqual(editor.serialize(), raw);
+  for (const variable of editor.document.variables) editor.deleteVariable(variable.id);
+  const emptyExpected = Object.fromEntries(Object.entries(before).filter(([key]) => !/^-?\d+:/.test(key)));
+  emptyExpected.layout = JSON.stringify((JSON.parse(before.layout) as string[]).filter(record => record === 'eof' || /^\d+:(end|separator)$/.test(record)));
+  writeFileSync(output, editor.serialize());
+  assert.deepEqual(JSON.parse(runOracle('read', output, editor.document.fileType, editor.document.encoding)), emptyExpected, `${path}: deleting all variables preserves headers and character boundaries`);
+  editor.reset(); assert.deepEqual(editor.serialize(), raw);
+  console.log(`✓ ${path}: variable additions/deletions, empty scopes, and exact reset accepted by the original engine reader`);
 }

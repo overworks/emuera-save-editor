@@ -1,7 +1,7 @@
 import { messageOf } from './core/diagnostic';
 import { SaveError } from './core/model';
 import { Editor, parseSave } from './core/editor';
-import type { Query } from './core/editor';
+import type { NewVariable, Query } from './core/editor';
 import type { EncodingOption } from './core/model';
 
 export type Request =
@@ -12,6 +12,9 @@ export type Request =
   | { type: 'revert'; id: number; key: string }
   | { type: 'resize'; id: number; dimensions: number[] }
   | { type: 'revertResize'; id: number }
+  | { type: 'addVariable'; variable: NewVariable }
+  | { type: 'deleteVariable'; id: number }
+  | { type: 'restoreVariable'; id: number }
   | { type: 'reset' }
   | { type: 'labels'; files: { name: string; bytes: Uint8Array }[]; encoding: EncodingOption }
   | { type: 'export' };
@@ -33,6 +36,9 @@ self.onmessage = ({ data }: MessageEvent<{ requestId: number; request: Request }
         case 'revert': editor.revert(request.id, request.key); result = editor.summary(); break;
         case 'resize': editor.resize(request.id, request.dimensions); result = editor.summary(); break;
         case 'revertResize': editor.revertResize(request.id); result = editor.summary(); break;
+        case 'addVariable': { const id = editor.addVariable(request.variable); result = { id, summary: editor.summary() }; break; }
+        case 'deleteVariable': editor.deleteVariable(request.id); result = editor.summary(); break;
+        case 'restoreVariable': editor.restoreVariable(request.id); result = editor.summary(); break;
         case 'reset': editor.reset(); result = editor.summary(); break;
         case 'labels': result = { warnings: editor.labels.load(request.files, request.encoding), summary: editor.summary() }; break;
         case 'export': result = editor.serialize(); break;

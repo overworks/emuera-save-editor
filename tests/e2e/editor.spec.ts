@@ -157,6 +157,8 @@ test('text arrays keep their saved bounds and offer no resizing control', async 
   await page.getByLabel('세이브 파일 선택').setInputFiles('tests/fixtures/global-text.sav');
   await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (11)' });
   await expect(page.getByRole('button', { name: '배열 크기 변경', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '변수 추가', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '변수 삭제', exact: true })).toHaveCount(0);
 });
 
 test('CSV metadata keeps saved bytes, follows edited NO, warns on conflicts and clears with a new save', async ({ page }) => {

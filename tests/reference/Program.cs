@@ -19,6 +19,14 @@ internal static class Program {
     static long[] Numbers = new long[] { 0, 207, 208, -32768, 32767, 32768, -2147483648, 2147483647, 2147483648, long.MinValue, long.MaxValue, 0 };
     static void Main(string[] args) {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        if (args[0] == "generate-structure") {
+            using var w = new EraBinaryDataWriter(File.Create(args[1]));
+            w.WriteHeader(); w.WriteFileType(EraSaveFileType.Normal);
+            w.WriteInt64(4242); w.WriteInt64(100); w.WriteString("empty and unseparated characters"); w.WriteInt64(2);
+            w.WriteEOC();
+            w.WriteWithKey("NAME", "二人目"); w.WriteWithKey("NO", 8L); w.WriteEOC(); w.WriteEOF();
+            return;
+        }
         if (args[0] == "generate") {
             Directory.CreateDirectory(args[1]);
             foreach (bool global in new[] { false, true }) {
@@ -92,11 +100,13 @@ internal static class Program {
         int chars = global ? 0 : (int)r.ReadInt64();
         result["chars"] = chars.ToString();
         int scope = chars > 0 ? 0 : -1;
+        var layout = new List<string>();
         while (true) {
             var v = r.ReadVariableCode();
-            if (v.Value == EraSaveDataType.EOF) break;
-            if (v.Value == EraSaveDataType.Separator) continue;
-            if (v.Value == EraSaveDataType.EOC) { scope++; if (scope == chars) scope = -1; continue; }
+            if (v.Value == EraSaveDataType.EOF) { layout.Add("eof"); break; }
+            if (v.Value == EraSaveDataType.Separator) { layout.Add(scope + ":separator"); continue; }
+            if (v.Value == EraSaveDataType.EOC) { layout.Add(scope + ":end"); scope++; if (scope == chars) scope = -1; continue; }
+            layout.Add(scope + ":" + v.Key + ":" + (int)v.Value);
             string key = scope + ":" + v.Key;
             int rank = (int)v.Value & 3;
             bool str = ((int)v.Value & 16) != 0;
@@ -122,6 +132,7 @@ internal static class Program {
                 result[key + ":" + string.Join(",", indices)] = array.GetValue(indices)?.ToString() ?? "";
             }
         }
+        result["layout"] = JsonSerializer.Serialize(layout);
         return result;
     }
     static Dictionary<string, string> ReadText(EraDataReader r, bool global) {

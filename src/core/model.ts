@@ -4,6 +4,7 @@ import type { ErrorKey, MessageParams } from './diagnostic';
 export type Scalar = bigint | string;
 export type TextEncoding = 'utf-8' | 'shift_jis';
 export type EncodingOption = TextEncoding | 'auto';
+export type BinarySection = 'builtin' | 'user';
 export interface Span { start: number; end: number }
 export interface Variable extends Span {
   id: number;
@@ -13,6 +14,7 @@ export interface Variable extends Span {
   dimensions: number[];
   values: Map<string, Scalar>;
   textSpans?: Map<string, Span>;
+  section?: BinarySection; // Character binary records before/after the 0xfd separator.
 }
 export interface SaveDocument {
   original: Uint8Array;
@@ -26,6 +28,7 @@ export interface SaveDocument {
   description: string;
   characterCount: number;
   variables: Variable[];
+  binaryLayout?: { characterEnds: number[]; characterSeparators: (number | undefined)[]; eof: number };
 }
 export class SaveError extends MessageError {
   constructor(key: ErrorKey, position?: number, unit: 'byte' | 'line' = 'byte', params: MessageParams = {}) {
