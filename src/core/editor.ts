@@ -3,7 +3,7 @@ import { parseText, FINISH, SEPARATOR } from './text';
 import { encodeText } from './encoding';
 import { Labels, characterLabel } from './labels';
 import type { CharacterField, CharacterLabels } from './labels';
-import { MAX_ARRAY_CELLS, MAX_FILE_BYTES, MAX_STORED_CELLS, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
+import { MAX_ARRAY_CELLS, MAX_FILE_BYTES, MAX_STORED_CELLS, MAX_TEXT_LINES, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
 import type { BinarySection, EncodingOption, SaveDocument, Scalar, Variable } from './model';
 
 export function parseSave(bytes: Uint8Array, filename: string, encoding: EncodingOption = 'auto'): SaveDocument {
@@ -43,7 +43,7 @@ export interface Summary {
 }
 const PAGE_SIZE = 50;
 const CHARACTER_REFERENCES = new Set(['TARGET', 'ASSI', 'MASTER', 'PLAYER']);
-interface CharacterCopy { bytes: Uint8Array; separator?: number; variables: Variable[] }
+interface CharacterCopy { bytes: Uint8Array; separator?: number; textBaseEnd?: number; variables: Variable[] }
 export class Editor {
   readonly edits = new Map<number, Map<string, Scalar>>();
   private readonly resizes = new Map<number, number[]>();
@@ -80,7 +80,8 @@ export class Editor {
   private variables(includeDeleted = false, includeDeletedCharacters = false): Variable[] {
     return [...this.document.variables, ...this.copiedVariables.values(), ...this.added.values()]
       .filter(v => (includeDeleted || !this.deleted.has(v.id)) && (includeDeletedCharacters || !this.deletedCharacters.has(v.scope)))
-      .sort((a, b) => (this.document.format === 'binary' && a.scope !== b.scope ? a.scope === -1 ? 1 : b.scope === -1 ? -1 : a.scope - b.scope : 0)
+      .sort((a, b) => Number(a.textSection === 'extended') - Number(b.textSection === 'extended')
+        || (a.scope !== b.scope ? a.scope === -1 ? 1 : b.scope === -1 ? -1 : a.scope - b.scope : 0)
         || a.start - b.start || Number(a.section === 'user') - Number(b.section === 'user') || a.id - b.id);
   }
   private variable(id: number, includeDeleted = false): Variable {
@@ -101,14 +102,12 @@ export class Editor {
     }
   }
   private requireCharacter(scope: number, includeDeleted = false) {
-    const layout = this.requireBinary();
-    if (this.document.fileType !== 'normal') throw new SaveError('error.characterBinary');
+    if (this.document.fileType !== 'normal') throw new SaveError('error.characterNormal');
     if (!Number.isInteger(scope) || scope < 0 || (scope >= this.document.characterCount && !this.copies.has(scope))
       || (!includeDeleted && this.deletedCharacters.has(scope))) throw new SaveError('error.characterMissing');
-    return layout;
   }
   private isReference(v: Variable, key: string): boolean {
-    return this.document.format === 'binary' && this.document.fileType === 'normal' && v.scope === -1 && v.kind === 'int'
+    return this.document.fileType === 'normal' && v.scope === -1 && v.kind === 'int' && (!v.textSpans || v.textSpans.has(key))
       && v.dimensions.length === 1 && key === '0' && CHARACTER_REFERENCES.has(v.name.toUpperCase());
   }
   private bindReference(value: bigint): number | bigint { return this.characterAtIndex.get(String(value)) ?? value; }
@@ -122,19 +121,35 @@ export class Editor {
     const variables = this.variables();
     if (variables.length + variables.filter(v => v.scope === scope).length > 200_000) throw new SaveError('error.variableCount');
     // Snapshot the current export, including edits, bounds and variable membership, independently of later source edits.
-    const bytes = this.serialize(), snapshot = parseSave(bytes, this.document.filename), layout = snapshot.binaryLayout!;
-    const index = this.characterIndices.get(scope)!, start = layout.characterStarts[index], end = layout.characterEnds[index] + 1;
+    const bytes = this.serialize(), snapshot = parseSave(bytes, this.document.filename, this.readEncoding());
+    const index = this.characterIndices.get(scope)!, layout = snapshot.binaryLayout, textLayout = snapshot.textLayout;
+    const parts = textLayout ? textLayout.characters[index] : undefined;
+    const base = parts?.base ?? { start: layout!.characterStarts[index], end: layout!.characterEnds[index] + 1 };
+    const baseLength = base.end - base.start, extended = parts?.extended;
+    const copyLength = baseLength + (extended ? extended.end - extended.start : 0);
     const source = snapshot.variables.filter(v => v.scope === index);
-    if (bytes.length + end - start > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
+    const originalCount = this.document.textLayout?.characterCount;
+    const nextCountLength = originalCount && snapshot.characterCount + 1 === this.document.characterCount
+      ? originalCount.end - originalCount.start : String(snapshot.characterCount + 1).length;
+    const countGrowth = textLayout ? nextCountLength - (textLayout.characterCount!.end - textLayout.characterCount!.start) : 0;
+    const joinGrowth = textLayout && bytes[textLayout.sharedStart - 1] === 13 && bytes[base.start] === 10 ? 1 : 0;
+    if (bytes.length + copyLength + countGrowth + joinGrowth > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
     if ([...snapshot.variables, ...source].reduce((n, v) => n + v.values.size, 0) > MAX_STORED_CELLS) throw new SaveError('error.storedCells');
+    if (textLayout && textLayout.lines + parts!.lines > MAX_TEXT_LINES) throw new SaveError('error.textLines');
     const nextScope = this.nextScope++;
-    const copies = source.map(v => ({ ...v, id: this.nextId++, scope: nextScope, start: v.start - start, end: v.end - start }));
+    const copies = source.map(v => {
+      const offset = v.textSection === 'extended' ? baseLength - extended!.start : -base.start;
+      return { ...v, id: this.nextId++, scope: nextScope, start: v.start + offset, end: v.end + offset,
+        textSpans: v.textSpans && new Map([...v.textSpans].map(([key, span]) => [key, { start: span.start + offset, end: span.end + offset }])) };
+    });
     for (const v of copies) this.copiedVariables.set(v.id, v);
-    const separator = layout.characterSeparators[index];
-    this.copies.set(nextScope, { bytes: bytes.slice(start, end), separator: separator === undefined ? undefined : separator - start, variables: copies });
+    const separator = layout?.characterSeparators[index];
+    this.copies.set(nextScope, { bytes: concat([bytes.subarray(base.start, base.end), ...(extended ? [bytes.subarray(extended.start, extended.end)] : [])]),
+      separator: separator === undefined ? undefined : separator - base.start, textBaseEnd: textLayout ? baseLength : undefined, variables: copies });
     this.reindexCharacters(); this.refreshCharacters();
     return nextScope;
   }
+  private readEncoding(): EncodingOption { return this.document.format === 'text' ? this.document.encoding as 'utf-8' | 'shift_jis' : 'auto'; }
   previewDeleteCharacter(scope: number): ReferenceChange[] {
     this.requireCharacter(scope);
     const next = new Map<number, number>();
@@ -412,17 +427,40 @@ export class Editor {
         recordPatches(copy.variables, copyAdditions.get(scope) ?? [], () => copy.separator)));
       if (chunks.length) patches.push({ start: layout.sharedStart, end: layout.sharedStart, bytes: concat(chunks) });
     }
+    const textLayout = this.document.textLayout;
+    if (textLayout && (this.copies.size || this.deletedCharacters.size)) {
+      if (this.characterIndices.size !== this.document.characterCount) patches.push({ ...textLayout.characterCount!, bytes: encodeText(String(this.characterIndices.size), this.document.encoding as 'utf-8' | 'shift_jis') });
+      for (const scope of this.deletedCharacters) {
+        const { base, extended } = textLayout.characters[scope];
+        for (const span of extended ? [base, extended] : [base]) patches.push({ ...span, bytes: new Uint8Array() });
+      }
+      for (const section of ['base', 'extended'] as const) {
+        const start = section === 'base' ? textLayout.sharedStart : textLayout.extendedSharedStart;
+        if (start === undefined || !this.copies.size) continue;
+        const chunks: Uint8Array[] = [];
+        for (const copy of this.copies.values()) {
+          const from = section === 'base' ? 0 : copy.textBaseEnd!, to = section === 'base' ? copy.textBaseEnd! : copy.bytes.length;
+          const changes = recordPatches(copy.variables.filter(v => v.textSection === section), [], () => undefined)
+            .map(p => ({ ...p, start: p.start - from, end: p.end - from }));
+          chunks.push(patchBytes(copy.bytes.subarray(from, to), changes, true));
+        }
+        patches.push({ start, end: start, bytes: concat(chunks, true) });
+      }
+    }
     patches.push(...originalPatches);
-    const result = patchBytes(this.document.original, patches);
+    const result = patchBytes(this.document.original, patches, this.document.format === 'text');
     // Validate the exact download, including shape and all logical values. No dense expansion.
-    const check = parseSave(result, this.document.filename, this.document.format === 'text' ? this.document.encoding as 'utf-8' | 'shift_jis' : 'auto');
+    const check = parseSave(result, this.document.filename, this.readEncoding());
     if (check.variables.length !== expected.length || check.characterCount !== this.characterIndices.size || check.fileType !== this.document.fileType
+      || check.format !== this.document.format || check.formatVersion !== this.document.formatVersion || check.encoding !== this.document.encoding
       || check.gameCode !== this.document.gameCode || check.gameVersion !== this.document.gameVersion || check.description !== this.document.description) throw new SaveError('error.exportValidation');
     for (const [i, before] of expected.entries()) {
       const after = check.variables[i];
       const dimensions = this.dimensions(before);
       const scope = before.scope < 0 ? -1 : this.characterIndices.get(before.scope);
-      if (before.name !== after.name || scope !== after.scope || before.kind !== after.kind || before.section !== after.section || dimensions.join() !== after.dimensions.join()) throw new SaveError('error.exportStructure');
+      if (before.name !== after.name || scope !== after.scope || before.kind !== after.kind || before.section !== after.section || before.textSection !== after.textSection
+        || dimensions.join() !== after.dimensions.join() || (before.textSpans && (before.textSpans.size !== after.textSpans?.size
+          || [...before.textSpans.keys()].some(key => !after.textSpans!.has(key))))) throw new SaveError('error.exportStructure');
       const keys = new Set([...before.values.keys(), ...after.values.keys(), ...this.activeEdits(before).keys()]);
       for (const key of keys) if (ordinal(key, dimensions) >= 0 && this.value(before, key) !== originalValue(after, key)) throw new SaveError('error.exportValues');
     }
@@ -430,7 +468,8 @@ export class Editor {
   }
 }
 
-function concat(chunks: Uint8Array[]): Uint8Array {
+function concat(chunks: Uint8Array[], preserveTextLines = false): Uint8Array {
+  if (preserveTextLines) return patchBytes(new Uint8Array(), chunks.map(bytes => ({ start: 0, end: 0, bytes })), true);
   const length = chunks.reduce((n, chunk) => n + chunk.length, 0);
   if (length > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
   const bytes = new Uint8Array(length);

@@ -85,7 +85,7 @@ test('character changes and reference previews survive offline language switchin
   expect(readFileSync((await (await pending).path())!)).toEqual(Buffer.from(characterFixture()));
 });
 
-test('deleting the last character leaves a restorable save and text/global files offer no character operations', async ({ page }) => {
+test('deleting the last binary character leaves a restorable save and global files offer no character operations', async ({ page }) => {
   await page.goto('/?lang=en'); await page.getByLabel('Select save file').setInputFiles('tests/fixtures/normal-binary.sav');
   await page.getByRole('button', { name: /#0 · NO 7/ }).click();
   await page.getByRole('button', { name: 'Delete character', exact: true }).click();
@@ -96,12 +96,11 @@ test('deleting the last character leaves a restorable save and text/global files
   await page.getByRole('button', { name: /Changes/ }).click();
   await page.getByRole('button', { name: 'Restore character アオイ', exact: true }).click();
   await expect(page.getByText('Unmodified', { exact: true })).toBeVisible();
-  await page.getByLabel('Select save file').setInputFiles('tests/fixtures/normal-text.sav');
-  await page.getByRole('button', { name: /#0 · NO 7/ }).click();
-  await expect(page.getByRole('button', { name: 'Duplicate character', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Delete character', exact: true })).toHaveCount(0);
-  await page.getByLabel('Select save file').setInputFiles('tests/fixtures/global-binary.sav');
-  await expect(page.getByRole('button', { name: 'Duplicate character', exact: true })).toHaveCount(0);
+  for (const filename of ['global-text.sav', 'global-binary.sav']) {
+    await page.getByLabel('Select save file').setInputFiles(`tests/fixtures/${filename}`);
+    await expect(page.getByRole('button', { name: 'Duplicate character', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Delete character', exact: true })).toHaveCount(0);
+  }
 });
 
 for (const l of [

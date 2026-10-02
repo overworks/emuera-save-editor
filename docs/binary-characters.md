@@ -1,6 +1,6 @@
 # Binary character operations
 
-The editor duplicates and deletes characters in existing normal binary saves. These operations edit saved records; they do not run `ADDCHARA`, `ADDCOPYCHARA`, `DELCHARA`, game scripts, or character initialization. Usage is documented in the [README](../README.md#duplicating-and-deleting-binary-characters).
+The editor duplicates and deletes characters in existing normal binary saves. These operations edit saved records; they do not run `ADDCHARA`, `ADDCOPYCHARA`, `DELCHARA`, game scripts, or character initialization. Usage is documented in the [README](../README.md#duplicating-and-deleting-characters).
 
 ## Source evidence
 
@@ -18,7 +18,7 @@ Original character IDs equal their original positions. Copies receive monotonica
 
 A copy snapshots a validated current export, including active value edits, resized bounds, variable additions/deletions, names, NO, and section markers. Only the selected character block is retained in the copy. Later source edits do not affect it. Copied variables are baseline records within that copy, so the changes view shows one character addition rather than marking every copied variable as newly added. Further edits and variable operations on the copy are tracked normally. Hidden cells outside current array bounds and already deleted variables are not copied.
 
-Deleting an original hides its whole block and all related edit overlays. Restoring it recovers those overlays at the original relative position. Deleting a copy cancels its block and edits. Empty characters and deletion of every character are supported. Text saves, global saves, and creation without a source character are excluded.
+Deleting an original hides its whole block and all related edit overlays. Restoring it recovers those overlays at the original relative position. Deleting a copy cancels its block and edits. Empty characters and deletion of every character are supported. Global saves and creation without a source character are excluded. [Text character operations](text-characters.md) share these identity and reference rules, with separate block and stored-cell handling.
 
 ## Standard references
 

@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { Editor, parseSave } from '../src/core/editor';
 import type { NewVariable } from '../src/core/editor';
 import { coordinates, cellCount } from '../src/core/model';
+import type { TextEncoding } from '../src/core/model';
 import { buildOracle, runOracle } from './oracle';
 
 buildOracle();
@@ -152,6 +153,86 @@ characterEditor.cloneCharacter(0); characterEditor.deleteCharacter(1);
 characterEditor.set(characterVariable(0, 'NAME').id, '', '後で変更');
 checkCharacters('edited-copy-and-delete', characterExpected([source(0, { ...snapshot, '0:NAME:': '後で変更' }), source(2), source(0, snapshot)], { TARGET: '1', ASSI: '-1', PLAYER: '1' }));
 characterEditor.reset(); assert.deepEqual(characterEditor.serialize(), characterBytes);
+
+// Text characters occupy separate base and extension blocks. Compare both with C#,
+// including each historical marker's section count and both supported encodings.
+for (const spec of [
+  { version: 0, encoding: 'utf-8', newline: 'lf', bom: 'nobom' },
+  { version: 1700, encoding: 'utf-8', newline: 'crlf', bom: 'bom' },
+  { version: 1708, encoding: 'utf-8', newline: 'cr', bom: 'nobom' },
+  { version: 1729, encoding: 'shift_jis', newline: 'crlf', bom: 'nobom' },
+  { version: 1803, encoding: 'utf-8', newline: 'lf', bom: 'bom' },
+  { version: 1808, encoding: 'utf-8', newline: 'crlf', bom: 'bom' },
+  { version: 1808, encoding: 'shift_jis', newline: 'crlf', bom: 'nobom' },
+  { version: 1808, encoding: 'utf-8', newline: 'mixed', bom: 'nobom' },
+] as const) {
+  const label = `${spec.version}-${spec.encoding}-${spec.newline}`, input = `.reference/edited/text-characters-${label}.sav`;
+  runOracle('generate-text-characters', input, spec.encoding, String(spec.version), spec.newline === 'mixed' ? 'lf' : spec.newline, spec.bom);
+  let bytes = new Uint8Array(readFileSync(input));
+  if (spec.newline === 'mixed') {
+    const layout = parseSave(bytes, input, spec.encoding).textLayout!;
+    for (const offset of [layout.characterCount!.end, layout.characters[1].base.end - 1, layout.characters[2].base.end - 1]) bytes[offset] = 13;
+    bytes = bytes.slice(0, -1); // The final separator also works without a trailing newline.
+    writeFileSync(input, bytes);
+  }
+  const before: Record<string, string> = JSON.parse(runOracle('read', input, 'normal', spec.encoding));
+  const e = new Editor(parseSave(bytes, input, spec.encoding as TextEncoding));
+  const find = (scope: number, name: string) => e.summary().variables.find(v => v.scope === scope && v.name === name)!;
+  const source = (scope: number, data = before) => ({ scope, data });
+  const expected = (sources: { scope: number; data: Record<string, string> }[], references: Record<string, string> = {}) => {
+    const result = Object.fromEntries(Object.entries(before).filter(([key]) => !/^\d+:/.test(key)));
+    for (const [index, { scope, data }] of sources.entries()) {
+      const prefix = `${scope}:`;
+      for (const [key, value] of Object.entries(data)) if (key.startsWith(prefix)) result[`${index}:${key.slice(prefix.length)}`] = value;
+    }
+    const layout: string[] = [];
+    for (const part of ['base', 'extended']) {
+      for (const [index, { scope, data }] of sources.entries()) {
+        const prefix = `${part}:${scope}:`;
+        for (const record of JSON.parse(data.layout) as string[]) if (record.startsWith(prefix)) layout.push(`${part}:${index}:${record.slice(prefix.length)}`);
+      }
+      layout.push(...(JSON.parse(before.layout) as string[]).filter(record => record.startsWith(`${part}:-1:`)));
+    }
+    result.chars = String(sources.length); result.layout = JSON.stringify(layout);
+    for (const [name, value] of Object.entries(references)) result[`-1:${name}:0`] = value;
+    return result;
+  };
+  const check = (name: string, intended: Record<string, string>) => {
+    const output = `.reference/edited/text-characters-${label}-${name}.sav`;
+    writeFileSync(output, e.serialize());
+    assert.deepEqual(JSON.parse(runOracle('read', output, 'normal', spec.encoding)), intended, `text characters ${label} ${name}: full dictionaries and record order`);
+  };
+  const reset = () => { e.reset(); assert.deepEqual(e.serialize(), bytes); };
+  const snapshot = { ...before };
+  const set = (scope: number, name: string, key: string, value: string, intended: Record<string, string>) => {
+    e.set(find(scope, name).id, key, value); intended[`0:${name}:${key}`] = value;
+  };
+  set(0, 'NAME', '', '編集済み', snapshot); set(0, 'ABL', '0', '-9223372036854775808', snapshot);
+  if (spec.version) set(0, 'NICKNAME', '', '長い別名:保存', snapshot);
+  if (spec.version >= 1803) set(0, 'C2D', '3,2', '9223372036854775807', snapshot);
+  const copy = e.cloneCharacter(0); e.cloneCharacter(1); e.deleteCharacter(1);
+  const copied = { ...snapshot }; set(copy, 'NAME', '', '複製', copied);
+  if (spec.version) set(copy, 'CSTR', '0', '空欄の編集', copied);
+  e.set(find(0, 'NAME').id, '', '後で変更');
+  check('edited-copy-and-delete', expected([source(0, { ...snapshot, '0:NAME:': '後で変更' }), source(2), source(0, copied), source(1)], { TARGET: '1', ASSI: '-1', PLAYER: '1' }));
+  const second = e.cloneCharacter(copy); e.deleteCharacter(copy);
+  e.set(find(-1, 'TARGET').id, '0', '3'); e.deleteCharacter(0);
+  check('referenced-copy-of-copy', expected([source(2), source(1), source(0, copied)], { TARGET: '2', ASSI: '-1', MASTER: '-1', PLAYER: '0' }));
+  e.deleteCharacter(second);
+  check('cancel-referenced-copy', expected([source(2), source(1)], { TARGET: '-1', ASSI: '-1', MASTER: '-1', PLAYER: '0' }));
+  reset();
+  e.cloneCharacter(1); e.cloneCharacter(1); e.deleteCharacter(0);
+  check('empty-names-and-sections', expected([source(1), source(2), source(1), source(1)], { TARGET: '1', ASSI: '0', MASTER: '-1', PLAYER: '1' }));
+  reset();
+  for (const scope of [2, 0, 1]) e.deleteCharacter(scope);
+  check('delete-all', expected([], { TARGET: '-1', ASSI: '-1', MASTER: '-1', PLAYER: '-1' }));
+  for (const scope of [1, 2, 0]) e.restoreCharacter(scope);
+  assert.deepEqual(e.serialize(), bytes);
+  e.deleteCharacter(0); e.set(find(-1, 'TARGET').id, '0', '0'); e.restoreCharacter(0);
+  check('manual-reference-restore', expected([source(0), source(1), source(2)], { TARGET: '1' }));
+  reset();
+  console.log(`✓ text characters ${label}: 6 scenarios with complete values, record order, references and exact reset accepted by the original reader`);
+}
 
 for (const scope of [0, 1, 2]) characterEditor.deleteCharacter(scope);
 checkCharacters('delete-all', characterExpected([], { TARGET: '-1', ASSI: '-1', MASTER: '-1', PLAYER: '-1' }));

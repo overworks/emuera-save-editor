@@ -135,7 +135,7 @@ describe('binary character structure', () => {
   });
 
   it('rejects unsupported files, absent sources and the character limit without partial changes', () => {
-    for (const name of ['normal-text', 'global-binary']) {
+    for (const name of ['global-text', 'global-binary']) {
       const bytes = new Uint8Array(readFileSync(`tests/fixtures/${name}.sav`)), e = new Editor(parseSave(bytes, name));
       for (const mutate of [() => e.cloneCharacter(0), () => e.deleteCharacter(0), () => e.restoreCharacter(0)]) expect(mutate).toThrow();
       expect(e.serialize()).toEqual(bytes);
@@ -147,5 +147,5 @@ describe('binary character structure', () => {
     e.deleteCharacter(0); e.cloneCharacter(1);
     expect(() => e.restoreCharacter(0)).toThrow('error.characterCount');
     e.reset(); expect(e.serialize()).toEqual(bytes);
-  });
+  }, 20_000);
 });

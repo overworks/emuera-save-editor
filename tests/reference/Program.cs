@@ -19,6 +19,11 @@ internal static class Program {
     static long[] Numbers = new long[] { 0, 207, 208, -32768, 32767, 32768, -2147483648, 2147483647, 2147483648, long.MinValue, long.MaxValue, 0 };
     static void Main(string[] args) {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        if (args[0] == "generate-text-characters") {
+            MinorShift.Emuera.Config.SaveEncode = args[2] == "shift_jis" ? Encoding.GetEncoding(932) : new UTF8Encoding(args[5] != "nobom");
+            GenerateTextCharacters(args[1], int.Parse(args[3]), args[4] == "lf" ? "\n" : args[4] == "cr" ? "\r" : "\r\n");
+            return;
+        }
         if (args[0] == "generate-characters") {
             using var w = new EraBinaryDataWriter(File.Create(args[1]));
             w.WriteHeader(); w.WriteFileType(EraSaveFileType.Normal);
@@ -107,6 +112,38 @@ internal static class Program {
         w.WriteExtended("CUSTOM_NUMBER", new long[] { 5, 0, -1 }); w.EmuSeparete();
         for (int i = 2; i < 6; i++) w.EmuSeparete();
     }
+    static void GenerateTextCharacters(string path, int version, string newline) {
+        using var w = new EraDataWriter(File.Create(path));
+        ((StreamWriter)typeof(EraDataWriter).GetField("writer", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(w)).NewLine = newline;
+        w.Write(4242L); w.Write(100L); w.Write("文字の冒険"); w.Write(3L);
+        for (int c = 0; c < 3; c++) {
+            w.Write(c == 1 ? "" : c == 0 ? "一人目" : "三人目"); w.Write(c == 1 ? "" : "呼び名"); w.Write(0L); w.Write(c == 2 ? long.MaxValue : 7L + c);
+            foreach (var name in Chara) w.Write(name == "ABL" ? new long[] { c + 1, 0, 3 } : name == "RELATION" ? new long[] { 0, long.MinValue } : Array.Empty<long>());
+        }
+        foreach (var name in Common) w.Write(name == "TARGET" ? new long[] { 2, long.MaxValue } : name == "ASSI" ? new long[] { 1 } : name == "MASTER" ? new long[] { 0, -9 }
+            : name == "PLAYER" || name == "FLAG" ? new long[] { 2 } : name == "DAY" ? new long[] { 12 } : Array.Empty<long>());
+        w.Write(new string[] { "", "保存" });
+        if (version == 0) return;
+        w.Write(version == 1700 ? "__EMUERA_STRAT__" : "__EMUERA_" + version + "_STRAT__");
+        for (int c = 0; c < 3; c++) {
+            if (c != 1) w.WriteExtended("NICKNAME", "旅人" + c + ":別名"); w.EmuSeparete();
+            if (c != 1) w.WriteExtended("EXTRA_NUMBER", long.MinValue); w.EmuSeparete();
+            if (c != 1) w.WriteExtended("CSTR", new string[] { "", "漢字", "" }); w.EmuSeparete();
+            if (c != 1) w.WriteExtended("CEXT", new long[] { 0, 5 }); w.EmuSeparete();
+            if (version >= 1803) {
+                w.EmuSeparete();
+                if (c != 1) w.WriteExtended("C2D", new long[,] { { 0, 7, 0 }, { 0, 0, 0 }, { 3, 0, 0 }, { 0, 0, 9 } }); w.EmuSeparete();
+            }
+        }
+        w.WriteExtended("SHARED_NOTE", "そのまま"); w.EmuSeparete(); w.WriteExtended("CUSTOM_REF", 2L); w.EmuSeparete();
+        int rank = version < 1708 ? 1 : version < 1729 ? 2 : 3;
+        for (int i = 0; i < rank * 2; i++) w.EmuSeparete();
+        if (version >= 1808) {
+            w.WriteExtended("NOTES", new string[] { "", "記録" }); w.EmuSeparete();
+            w.WriteExtended("CUSTOM_NUMBER", new long[] { 5, 0, -1 }); w.EmuSeparete();
+            for (int i = 2; i < 6; i++) w.EmuSeparete();
+        }
+    }
     static Dictionary<string, string> ReadBinary(EraBinaryDataReader r) {
         var result = new Dictionary<string, string>();
         bool global = r.ReadFileType() == EraSaveFileType.Global;
@@ -151,31 +188,32 @@ internal static class Program {
     }
     static Dictionary<string, string> ReadText(EraDataReader r, bool global) {
         var result = new Dictionary<string, string>();
+        var layout = new List<string>();
         result["code"] = r.ReadInt64().ToString(); result["version"] = r.ReadInt64().ToString();
         int chars = 0;
-        void ints(string key) { var a = new long[128]; r.ReadInt64Array(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i].ToString(); }
-        void strs(string key) { var a = new string[128]; r.ReadStringArray(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i] ?? ""; }
+        void ints(string key) { layout.Add("base:" + key + ":int:1"); var a = new long[128]; r.ReadInt64Array(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i].ToString(); }
+        void strs(string key) { layout.Add("base:" + key + ":string:1"); var a = new string[128]; r.ReadStringArray(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i] ?? ""; }
         void sections(int scope, int rank, bool scalar) {
             string prefix = scope + ":";
             if (scalar) {
-                foreach (var v in r.ReadStringExtended()) result[prefix + v.Key + ":"] = v.Value;
-                foreach (var v in r.ReadInt64Extended()) result[prefix + v.Key + ":"] = v.Value.ToString();
+                foreach (var v in r.ReadStringExtended()) { layout.Add("extended:" + prefix + v.Key + ":string:0"); result[prefix + v.Key + ":"] = v.Value; }
+                foreach (var v in r.ReadInt64Extended()) { layout.Add("extended:" + prefix + v.Key + ":int:0"); result[prefix + v.Key + ":"] = v.Value.ToString(); }
             }
-            foreach (var v in r.ReadStringArrayExtended()) for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i];
-            foreach (var v in r.ReadInt64ArrayExtended()) for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i].ToString();
+            foreach (var v in r.ReadStringArrayExtended()) { layout.Add("extended:" + prefix + v.Key + ":string:1"); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i]; }
+            foreach (var v in r.ReadInt64ArrayExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:1"); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i].ToString(); }
             if (rank < 2) return;
             r.ReadStringArray2DExtended();
-            foreach (var v in r.ReadInt64Array2DExtended()) for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Length; j++) result[prefix + v.Key + ":" + i + "," + j] = v.Value[i][j].ToString();
+            foreach (var v in r.ReadInt64Array2DExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:2"); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Length; j++) result[prefix + v.Key + ":" + i + "," + j] = v.Value[i][j].ToString(); }
             if (rank < 3) return;
             r.ReadStringArray3DExtended();
-            foreach (var v in r.ReadInt64Array3DExtended()) for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Count; j++) for (int k = 0; k < v.Value[i][j].Length; k++) result[prefix + v.Key + ":" + i + "," + j + "," + k] = v.Value[i][j][k].ToString();
+            foreach (var v in r.ReadInt64Array3DExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:3"); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Count; j++) for (int k = 0; k < v.Value[i][j].Length; k++) result[prefix + v.Key + ":" + i + "," + j + "," + k] = v.Value[i][j][k].ToString(); }
         }
         if (global) { ints("-1:GLOBAL"); strs("-1:GLOBALS"); result["description"] = ""; }
         else {
             result["description"] = r.ReadString(); chars = (int)r.ReadInt64();
             for (int c = 0; c < chars; c++) {
-                foreach (string name in new[] { "NAME", "CALLNAME" }) result[c + ":" + name + ":"] = r.ReadString();
-                foreach (string name in new[] { "ISASSI", "NO" }) result[c + ":" + name + ":"] = r.ReadInt64().ToString();
+                foreach (string name in new[] { "NAME", "CALLNAME" }) { layout.Add("base:" + c + ":" + name + ":string:0"); result[c + ":" + name + ":"] = r.ReadString(); }
+                foreach (string name in new[] { "ISASSI", "NO" }) { layout.Add("base:" + c + ":" + name + ":int:0"); result[c + ":" + name + ":"] = r.ReadInt64().ToString(); }
                 foreach (string name in Chara) ints(c + ":" + name);
             }
             foreach (string name in Common) ints("-1:" + name);
@@ -183,9 +221,12 @@ internal static class Program {
         }
         result["chars"] = chars.ToString();
         if (r.SeekEmuStart()) {
-            if (!global) { for (int c = 0; c < chars; c++) sections(c, 2, true); sections(-1, 3, true); }
-            sections(-1, 3, false);
+            if (!global) { for (int c = 0; c < chars; c++) sections(c, r.DataVersion < 1803 ? 1 : 2, true); sections(-1, r.DataVersion < 1708 ? 1 : r.DataVersion < 1729 ? 2 : 3, true); }
+            if (global || r.DataVersion >= 1808) sections(-1, 3, false);
         }
+        result["formatVersion"] = Math.Max(0, r.DataVersion).ToString();
+        result["layout"] = JsonSerializer.Serialize(layout);
+        if (!((StreamReader)typeof(EraDataReader).GetField("reader", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(r)).EndOfStream) throw new Exception("Unread text data");
         return result;
     }
 }
