@@ -10,6 +10,8 @@ export type Request =
   | { type: 'query'; query: Query }
   | { type: 'set'; id: number; key: string; value: string }
   | { type: 'revert'; id: number; key: string }
+  | { type: 'resize'; id: number; dimensions: number[] }
+  | { type: 'revertResize'; id: number }
   | { type: 'reset' }
   | { type: 'labels'; files: { name: string; bytes: Uint8Array }[]; encoding: EncodingOption }
   | { type: 'export' };
@@ -29,7 +31,9 @@ self.onmessage = ({ data }: MessageEvent<{ requestId: number; request: Request }
         case 'query': result = editor.query(request.query); break;
         case 'set': editor.set(request.id, request.key, request.value); result = editor.summary(); break;
         case 'revert': editor.revert(request.id, request.key); result = editor.summary(); break;
-        case 'reset': editor.edits.clear(); result = editor.summary(); break;
+        case 'resize': editor.resize(request.id, request.dimensions); result = editor.summary(); break;
+        case 'revertResize': editor.revertResize(request.id); result = editor.summary(); break;
+        case 'reset': editor.reset(); result = editor.summary(); break;
         case 'labels': result = { warnings: editor.labels.load(request.files, request.encoding), summary: editor.summary() }; break;
         case 'export': result = editor.serialize(); break;
       }

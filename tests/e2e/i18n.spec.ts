@@ -7,6 +7,11 @@ const languages = [
   { locale: 'ko-KR', lang: 'ko', label: '언어', title: '세이브를 열고,', open: '세이브 파일 선택', search: '변수 검색', edit: 'GLOBAL:0 값 수정', value: '새로운 값', apply: '변경 적용', invalid: '64비트', changed: '1개 값 변경됨', download: '세이브 다운로드', sample: '샘플로 둘러보기', help: '사용 안내', helpTitle: '파일 정보와 사용 안내', close: '닫기', money: 'MONEY:0 값 수정' },
   { locale: 'ja-JP', lang: 'ja', label: '言語', title: 'セーブを開いて、', open: 'セーブファイルを選択', search: '変数を検索', edit: 'GLOBAL:0 を編集', value: '新しい値', apply: '変更を適用', invalid: '64 ビット', changed: '1 個の値を変更', download: 'セーブをダウンロード', sample: 'サンプルを見る', help: '使い方', helpTitle: 'ファイル情報と使い方', close: '閉じる', money: 'MONEY:0 を編集' },
 ] as const;
+const resizeLabels = {
+  en: { group: 'Variable group', resize: 'Resize array', first: 'Dimension 1 length' },
+  ko: { group: '변수 그룹', resize: '배열 크기 변경', first: '1차원 길이' },
+  ja: { group: '変数グループ', resize: '配列サイズを変更', first: '第 1 次元の長さ' },
+};
 
 for (const language of languages) {
   test.describe(language.lang, () => {
@@ -35,7 +40,7 @@ for (const language of languages) {
       expect(doc.variables.find(v => v.name === 'GLOBAL')?.values.get('0')).toBe(-9223372036854775808n);
     });
 
-    test('fits a narrow screen and retains accessible sample and dialog flows', async ({ page }) => {
+    test('fits a narrow screen and retains accessible sample and dialog flows', async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 360, height: 800 });
       await page.goto('/');
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
@@ -49,6 +54,18 @@ for (const language of languages) {
       await expect(page.getByLabel(language.value, { exact: true })).toBeFocused();
       await page.keyboard.press('Escape');
       await expect(page.getByRole('dialog')).not.toBeVisible();
+      const resize = resizeLabels[language.lang];
+      await page.getByLabel(language.search, { exact: true }).fill('');
+      await page.getByLabel(resize.group, { exact: true }).selectOption({ label: 'TA (80)' });
+      await page.getByRole('button', { name: resize.resize, exact: true }).click();
+      await expect(page.getByLabel(resize.first, { exact: true })).toBeFocused();
+      await expect(page.getByRole('dialog').locator('input')).toHaveCount(3);
+      await page.screenshot({ path: testInfo.outputPath(`resize-${language.lang}.png`) });
+      expect(await page.getByRole('dialog').evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.getByLabel(resize.first, { exact: true }).fill('5');
+      await page.getByRole('button', { name: language.apply, exact: true }).click();
+      await expect(page.getByRole('dialog')).not.toBeVisible();
+      await expect(page.getByLabel(resize.group, { exact: true }).locator('option:checked')).toHaveText('TA (100)');
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
     });
   });
@@ -70,6 +87,31 @@ test('falls back to English and retains a URL language choice without browser st
   expect(await page.evaluate(() => ({ local: localStorage.length, session: sessionStorage.length }))).toEqual({ local: 0, session: 0 });
   await page.goto('/?lang=constructor');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+});
+
+test('keeps resized arrays and new values while switching languages offline', async ({ page, context }) => {
+  await page.goto('/?lang=en');
+  await page.waitForLoadState('networkidle');
+  await context.setOffline(true);
+  await page.getByLabel('Select save file', { exact: true }).setInputFiles('tests/fixtures/global-binary.sav');
+  await page.getByLabel('Variable group', { exact: true }).selectOption({ label: 'GLOBALS (5)' });
+  await page.getByRole('button', { name: 'Resize array', exact: true }).click();
+  await page.getByLabel('Dimension 1 length').fill('6');
+  await page.getByRole('button', { name: 'Apply change', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit GLOBALS:5', exact: true }).click();
+  await page.getByLabel('New value', { exact: true }).fill('새 칸😀');
+  await page.getByRole('button', { name: 'Apply change', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Language', exact: true }).selectOption('ja');
+  await page.getByRole('button', { name: /変更履歴/ }).click();
+  await expect(page.getByRole('button', { name: 'GLOBALS の配列サイズを変更', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'GLOBALS:5 を編集', exact: true })).toContainText('새 칸😀');
+  await page.getByRole('combobox', { name: '言語', exact: true }).selectOption('ko');
+  await expect(page.getByText('값 1개 변경 · 배열 1개 크기 변경')).toBeVisible();
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: '세이브 다운로드', exact: true }).click();
+  const doc = parseSave(new Uint8Array(readFileSync((await (await pending).path())!)), 'resized.sav');
+  const v = doc.variables.find(v => v.name === 'GLOBALS')!;
+  expect(v.dimensions).toEqual([6]); expect(v.values.get('5')).toBe('새 칸😀');
 });
 
 test('switches languages offline without losing edits, search, CSV labels, or live diagnostics', async ({ page, context }) => {

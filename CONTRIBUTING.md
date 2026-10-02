@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, CSV labels, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing and undo, CSV labels, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
 
 For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
 

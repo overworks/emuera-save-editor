@@ -105,6 +105,7 @@ internal static class Program {
             long position = raw.BaseStream.Position;
             var dims = Enumerable.Range(0, rank).Select(_ => raw.ReadInt32()).ToArray();
             raw.BaseStream.Position = position;
+            result[key + ":dimensions"] = string.Join(",", dims);
             var array = Array.CreateInstance(str ? typeof(string) : typeof(long), dims);
             switch (v.Value) {
                 case EraSaveDataType.IntArray: r.ReadIntArray((long[])array, true); break;

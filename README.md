@@ -35,6 +35,14 @@ Switching languages preserves your open save, edits, search, and CSV labels. But
 
 The app downloads a separate file and does not overwrite your original. Downloads retain the original format and encoding. With no changes, the download is byte-for-byte identical to the input. Edited files are checked before downloading, but the app cannot validate a game's rules or the meaning of each value.
 
+## Resizing a binary array
+
+Open a binary save, select an array in **Variable group**, and choose **Resize array**. Enter each dimension's length, then apply the change. Integer and string arrays with one to three dimensions can grow or shrink, including to zero cells, without changing their rank. The total must stay within 100 million cells.
+
+Existing values keep their coordinates. New cells contain `0` or empty text. Cells outside the new bounds are excluded from the download; growing the array again in the same session restores their values and edits. **Changes** shows size changes alongside value edits, with individual undo and **Revert all**. Restoring the original size excludes edits to added cells; a download with no active changes is byte-identical to the input.
+
+This changes the size stored in the save. The game still uses its own declared array sizes and may ignore extra cells. Text saves do not declare complete array sizes, so text arrays cannot be resized.
+
 ## CSV labels and encoding
 
 Choose **Load CSV** to load the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files. You can select multiple CSV files. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.
@@ -51,14 +59,27 @@ The baseline is standard **Emuera 1.824**, preserved at commit [`85db4cbd`](http
 | Text saves | Legacy and extended sections; UTF-8 with or without BOM, and CP932/Shift-JIS |
 | Binary saves | Format version 1808 |
 | Values | Signed 64-bit integers, strings, and arrays up to three dimensions |
-| Editing | Existing values; implicit zero/empty cells within declared binary array bounds |
+| Editing | Existing values; implicit zero/empty binary cells; binary array resizing with unchanged rank |
 | Size limits | 64 MiB per file; 100 million cells per binary array; 1 million stored values; 1 million text lines |
 
 Text saves sometimes called “CSV saves” use Emuera's own format and are different from the CSV files used for labels. Text extension markers for 1700, 1708, 1729, 1803, and 1808 are recognized, with compatibility checks focused on the baseline engine's 1808 output.
 
-Character or variable creation/deletion, array resizing, format conversion, ERB/ERH execution, `_Rename.csv` substitutions, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. CSV labels do not infer game structure from character CSV files.
+Character or variable creation/deletion, text array resizing, format conversion, ERB/ERH execution, `_Rename.csv` substitutions, and EM/EM+EE-specific extensions are not supported. Omitted trailing cells in text arrays cannot be edited because their declared size is unavailable. Multidimensional string arrays in text saves are not supported by the baseline engine. CSV labels do not infer game structure from character CSV files.
 
-Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Compatibility checks use synthetic saves generated and read by the original engine's save code; real user game saves have not yet been validated.
+Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Automated compatibility checks use synthetic saves generated and read by the original engine's save code. A user has also confirmed loading, editing, and exporting actual save data. This report does not establish in-game reloading or compatibility with every game or fork, or validate the newly added resizing feature with real saves.
+
+## Planned support
+
+Unsupported features are being addressed incrementally. Binary array resizing is implemented. Remaining work includes:
+
+- Character and variable creation/deletion.
+- Text array resizing and format conversion, with explicit size information where required.
+- `_Rename.csv` substitutions and character CSV metadata.
+- EM/EM+EE-specific formats, with separate format evidence and fixtures.
+- Optional local session recovery, offline reopening/PWA, and a `file://` entry point.
+- ERB/ERH execution, which requires a separate execution design.
+
+These items remain unsupported until implemented and verified. This list does not imply a delivery date.
 
 ## Privacy and session data
 

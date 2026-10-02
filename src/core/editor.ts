@@ -2,7 +2,7 @@ import { MAGIC, parseBinary, writeVariable } from './binary';
 import { parseText, FINISH, SEPARATOR } from './text';
 import { encodeText } from './encoding';
 import { Labels } from './labels';
-import { MAX_FILE_BYTES, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
+import { MAX_ARRAY_CELLS, MAX_FILE_BYTES, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
 import type { EncodingOption, SaveDocument, Scalar, Variable } from './model';
 
 export function parseSave(bytes: Uint8Array, filename: string, encoding: EncodingOption = 'auto'): SaveDocument {
@@ -11,6 +11,7 @@ export function parseSave(bytes: Uint8Array, filename: string, encoding: Encodin
   return MAGIC.every((b, i) => bytes[i] === b) ? parseBinary(bytes, filename) : parseText(bytes, filename, encoding);
 }
 export interface Row {
+  type: 'value' | 'resize';
   variableId: number; key: string; name: string; scope: number; scopeName: string; kind: 'int' | 'string';
   dimensions: number[]; label: string; value: string; original: string; changed: boolean;
 }
@@ -22,12 +23,13 @@ export interface Summary {
   filename: string; bytes: number; format: 'text' | 'binary'; encoding: string; formatVersion: number;
   fileType: 'normal' | 'global'; gameCode: string; gameVersion: string; description: string;
   characters: { scope: number; name: string; no: string }[];
-  variables: { id: number; scope: number; name: string; count: number; dimensions: number[] }[];
-  changes: number; labels: number;
+  variables: { id: number; scope: number; name: string; count: number; dimensions: number[]; originalDimensions: number[] }[];
+  changes: number; resizedArrays: number; labels: number;
 }
 const PAGE_SIZE = 50;
 export class Editor {
   readonly edits = new Map<number, Map<string, Scalar>>();
+  private readonly resizes = new Map<number, number[]>();
   readonly labels = new Labels();
   private readonly characterNames = new Map<number, Variable>();
   private readonly characterNumbers = new Map<number, Variable>();
@@ -43,10 +45,27 @@ export class Editor {
     if (!v) throw new SaveError('error.variableMissing');
     return v;
   }
+  private dimensions(v: Variable): number[] { return this.resizes.get(v.id) ?? v.dimensions; }
+  private activeEdits(v: Variable): Map<string, Scalar> {
+    const dimensions = this.dimensions(v);
+    return new Map([...(this.edits.get(v.id) ?? [])].filter(([key]) => ordinal(key, dimensions) >= 0));
+  }
+  resize(id: number, dimensions: number[]) {
+    const v = this.variable(id);
+    if (this.document.format !== 'binary') throw new SaveError('error.resizeBinary');
+    if (!v.dimensions.length || dimensions.length !== v.dimensions.length) throw new SaveError('error.resizeRank');
+    if (dimensions.some(n => !Number.isInteger(n) || n < 0 || n > 2147483647)
+      || !Number.isSafeInteger(cellCount(dimensions)) || cellCount(dimensions) > MAX_ARRAY_CELLS) throw new SaveError('error.resizeSize');
+    // Keep hidden values at their coordinates for restoration; export omits them.
+    if (dimensions.join() === v.dimensions.join()) this.resizes.delete(id);
+    else this.resizes.set(id, [...dimensions]);
+  }
+  revertResize(id: number) { this.variable(id); this.resizes.delete(id); }
+  reset() { this.edits.clear(); this.resizes.clear(); }
   value(v: Variable, key: string): Scalar { return this.edits.get(v.id)?.get(key) ?? originalValue(v, key); }
   set(id: number, key: string, input: string) {
     const v = this.variable(id);
-    if (ordinal(key, v.dimensions) < 0 || (v.textSpans && !v.textSpans.has(key))) throw new SaveError('error.cellBounds');
+    if (ordinal(key, this.dimensions(v)) < 0 || (v.textSpans && !v.textSpans.has(key))) throw new SaveError('error.cellBounds');
     if (input.length > 1_000_000) throw new SaveError('error.inputLength');
     const value = v.kind === 'int' ? integer(input) : input;
     if (typeof value === 'string' && this.document.format === 'text') {
@@ -80,19 +99,22 @@ export class Editor {
         const v = this.characterNumbers.get(scope);
         return { scope, name: this.scopeName(scope), no: v ? String(this.value(v, '')) : '—' };
       }),
-      variables: d.variables.map(v => ({ id: v.id, scope: v.scope, name: v.name, dimensions: v.dimensions,
-        count: v.textSpans ? v.textSpans.size : cellCount(v.dimensions) })),
-      changes: [...this.edits.values()].reduce((n, v) => n + v.size, 0), labels: this.labels.count };
+      variables: d.variables.map(v => ({ id: v.id, scope: v.scope, name: v.name, dimensions: this.dimensions(v), originalDimensions: v.dimensions,
+        count: v.textSpans ? v.textSpans.size : cellCount(this.dimensions(v)) })),
+      changes: [...this.edits.keys()].reduce((n, id) => n + this.activeEdits(this.variable(id)).size, this.resizes.size),
+      resizedArrays: this.resizes.size, labels: this.labels.count };
   }
   query(query: Query): Page {
     const search = query.search.trim().toLowerCase();
-    const groups: { variable: Variable; keys?: string[]; count: number }[] = [];
+    const groups: { variable: Variable; dimensions: number[]; keys?: string[]; resized: boolean; count: number }[] = [];
     let total = 0;
     for (const v of this.document.variables) {
       if (query.scope !== 'all' && v.scope !== query.scope) continue;
       if (query.variableId !== undefined && v.id !== query.variableId) continue;
+      const dimensions = this.dimensions(v);
+      const resized = query.changedOnly && this.resizes.has(v.id) && (!search || v.name.toLowerCase().includes(search));
       let keys: string[] | undefined;
-      if (query.changedOnly) keys = [...(this.edits.get(v.id)?.keys() ?? [])];
+      if (query.changedOnly) keys = [...this.activeEdits(v).keys()];
       else if (v.textSpans) keys = [...v.textSpans.keys()];
       if (search && !v.name.toLowerCase().includes(search)) {
         const matches = (key: string) => key === search.replace(/:/g, ',') || this.labels.get(v.name, key).toLowerCase().includes(search);
@@ -100,16 +122,16 @@ export class Editor {
         else {
           const candidates = new Set<string>();
           const index = search.replace(/:/g, ',');
-          if (ordinal(index, v.dimensions) >= 0) candidates.add(index);
+          if (ordinal(index, dimensions) >= 0) candidates.add(index);
           this.labels.entries.get(v.name.toUpperCase())?.forEach((label, key) => {
-            if (label.toLowerCase().includes(search) && ordinal(key, v.dimensions) >= 0) candidates.add(key);
+            if (label.toLowerCase().includes(search) && ordinal(key, dimensions) >= 0) candidates.add(key);
           });
           keys = [...candidates];
         }
       }
-      keys?.sort((a, b) => ordinal(a, v.dimensions) - ordinal(b, v.dimensions));
-      const count = keys ? keys.length : cellCount(v.dimensions);
-      if (count) { groups.push({ variable: v, keys, count }); total += count; }
+      keys?.sort((a, b) => ordinal(a, dimensions) - ordinal(b, dimensions));
+      const count = (keys ? keys.length : cellCount(dimensions)) + Number(resized);
+      if (count) { groups.push({ variable: v, dimensions, keys, resized, count }); total += count; }
     }
     const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
     const page = Math.max(0, Math.min(pages - 1, Math.floor(query.page) || 0));
@@ -118,10 +140,13 @@ export class Editor {
     for (const group of groups) {
       if (skip >= group.count) { skip -= group.count; continue; }
       const v = group.variable;
-      for (let i = skip; i < group.count && rows.length < PAGE_SIZE; i++) {
-        const key = group.keys?.[i] ?? coordinates(i, v.dimensions);
-        rows.push({ variableId: v.id, key, name: v.name, scope: v.scope, scopeName: this.scopeName(v.scope),
-          kind: v.kind, dimensions: v.dimensions, label: this.labels.get(v.name, key),
+      if (group.resized && skip === 0) rows.push({ type: 'resize', variableId: v.id, key: '', name: v.name, scope: v.scope, scopeName: this.scopeName(v.scope),
+        kind: v.kind, dimensions: group.dimensions, label: '', value: group.dimensions.join(' × '), original: v.dimensions.join(' × '), changed: true });
+      const sizeRow = Number(group.resized);
+      for (let i = Math.max(0, skip - sizeRow); i < group.count - sizeRow && rows.length < PAGE_SIZE; i++) {
+        const key = group.keys?.[i] ?? coordinates(i, group.dimensions);
+        rows.push({ type: 'value', variableId: v.id, key, name: v.name, scope: v.scope, scopeName: this.scopeName(v.scope),
+          kind: v.kind, dimensions: group.dimensions, label: this.labels.get(v.name, key),
           value: String(this.value(v, key)), original: String(originalValue(v, key)), changed: this.edits.get(v.id)?.has(key) ?? false });
       }
       skip = 0;
@@ -131,9 +156,11 @@ export class Editor {
   }
   serialize(): Uint8Array {
     const patches = [];
-    for (const [id, changes] of this.edits) {
+    for (const id of new Set([...this.edits.keys(), ...this.resizes.keys()])) {
       const v = this.variable(id);
-      if (this.document.format === 'binary') patches.push({ start: v.start, end: v.end, bytes: writeVariable(v, changes) });
+      const changes = this.activeEdits(v);
+      if (!changes.size && !this.resizes.has(id)) continue;
+      if (this.document.format === 'binary') patches.push({ start: v.start, end: v.end, bytes: writeVariable({ ...v, dimensions: this.dimensions(v) }, changes) });
       else for (const [key, value] of changes) {
         const span = v.textSpans!.get(key)!;
         patches.push({ ...span, bytes: encodeText(String(value), this.document.encoding as 'utf-8' | 'shift_jis') });
@@ -145,9 +172,10 @@ export class Editor {
     if (check.variables.length !== this.document.variables.length) throw new SaveError('error.exportValidation');
     for (const [i, before] of this.document.variables.entries()) {
       const after = check.variables[i];
-      if (before.name !== after.name || before.scope !== after.scope || before.kind !== after.kind || before.dimensions.join() !== after.dimensions.join()) throw new SaveError('error.exportStructure');
+      const dimensions = this.dimensions(before);
+      if (before.name !== after.name || before.scope !== after.scope || before.kind !== after.kind || dimensions.join() !== after.dimensions.join()) throw new SaveError('error.exportStructure');
       const keys = new Set([...before.values.keys(), ...after.values.keys(), ...(this.edits.get(i)?.keys() ?? [])]);
-      for (const key of keys) if (this.value(before, key) !== originalValue(after, key)) throw new SaveError('error.exportValues');
+      for (const key of keys) if (ordinal(key, dimensions) >= 0 && this.value(before, key) !== originalValue(after, key)) throw new SaveError('error.exportValues');
     }
     return result;
   }

@@ -153,7 +153,8 @@ export function writeVariable(v: Variable, edits: Map<string, Scalar>): Uint8Arr
   v.dimensions.forEach(n => w.i32(n));
   const merged = new Map(v.values);
   edits.forEach((s, key) => merged.set(key, s));
-  const entries = [...merged].filter(([, s]) => s !== 0n && s !== '').sort((a, b) => ordinal(a[0], v.dimensions) - ordinal(b[0], v.dimensions));
+  const entries = [...merged].filter(([key, s]) => s !== 0n && s !== '' && ordinal(key, v.dimensions) >= 0)
+    .sort((a, b) => ordinal(a[0], v.dimensions) - ordinal(b[0], v.dimensions));
   const pos = v.dimensions.map(() => 0), rank = pos.length;
   const skip = (tag: number, n: number) => { if (n) { w.u8(tag); w.int(BigInt(n)); } };
   for (const [key, s] of entries) {

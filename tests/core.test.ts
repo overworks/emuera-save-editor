@@ -119,6 +119,100 @@ describe('validation and browsing', () => {
   });
 });
 
+describe('binary array resizing', () => {
+  for (const file of ['normal-binary', 'global-binary']) {
+    it(`${file}: grows every array type and preserves coordinates, original data, and untouched bytes`, () => {
+      const e = open(file);
+      for (const v of e.document.variables.filter(v => v.dimensions.length)) {
+        const originalDimensions = [...v.dimensions];
+        const dimensions = v.dimensions.map(n => n + 1);
+        e.resize(v.id, dimensions);
+        const key = dimensions.map(n => n - 1).join(',');
+        e.set(v.id, key, v.kind === 'int' ? String(MIN_INT) : '追加😀');
+        expect(v.dimensions).toEqual(originalDimensions);
+        const read = new Editor(parseSave(e.serialize(), 'resized.sav'));
+        const after = read.document.variables[v.id];
+        expect(after.dimensions).toEqual(dimensions);
+        expect(originalValue(after, key)).toBe(v.kind === 'int' ? MIN_INT : '追加😀');
+        for (const [key, value] of v.values) expect(originalValue(after, key)).toBe(value);
+      }
+      const next = parseSave(e.serialize(), 'resized.sav');
+      expect(next.original.slice(0, next.variables[0].start)).toEqual(e.document.original.slice(0, e.document.variables[0].start));
+      for (const v of e.document.variables.filter(v => !v.dimensions.length)) {
+        const after = next.variables[v.id];
+        expect(next.original.slice(after.start, after.end)).toEqual(e.document.original.slice(v.start, v.end));
+      }
+      e.reset();
+      expect(e.summary().changes).toBe(0);
+      expect(e.serialize()).toEqual(fixture(file));
+    });
+  }
+  it('shrinks by coordinate and restores hidden original values and edits when expanded again', () => {
+    const e = open('normal-binary'), v = variable(e, 'DA');
+    e.set(v.id, '3,4', '123');
+    e.set(v.id, '1,2', '456');
+    e.resize(v.id, [2, 3]);
+    expect(e.summary()).toMatchObject({ changes: 2, resizedArrays: 1 });
+    const query = { scope: 'all' as const, variableId: v.id, search: '', changedOnly: true, page: 0 };
+    expect(e.query(query).rows.map(row => [row.type, row.key])).toEqual([['resize', ''], ['value', '1,2']]);
+    const after = variable(new Editor(parseSave(e.serialize(), 'resized.sav')), 'DA');
+    expect(after.dimensions).toEqual([2, 3]);
+    expect(after.values.get('1,2')).toBe(456n);
+    expect(after.values.has('3,4')).toBe(false);
+    expect(() => e.set(v.id, '3,4', '789')).toThrow('error.cellBounds');
+    expect(e.query({ ...query, changedOnly: false, search: '3:4' }).total).toBe(0);
+    e.revertResize(v.id);
+    expect(e.summary()).toMatchObject({ changes: 2, resizedArrays: 0 });
+    expect(e.query({ ...query, search: '3:4' }).rows[0].value).toBe('123');
+    e.revert(v.id, '3,4'); e.revert(v.id, '1,2');
+    expect(e.serialize()).toEqual(fixture('normal-binary'));
+  });
+  it('supports empty arrays and ignores hidden edits in no-op exports and CSV searches', () => {
+    const e = open('normal-binary'), v = variable(e, 'ABL');
+    const q = { scope: 0, variableId: v.id, search: '', changedOnly: false, page: 0 };
+    e.labels.load([{ name: 'ABL.csv', bytes: new TextEncoder().encode('8,追加') }], 'auto');
+    e.resize(v.id, [10]); e.set(v.id, '8', '55');
+    expect(e.query({ ...q, search: '追加' }).rows[0].value).toBe('55');
+    e.resize(v.id, [0]);
+    expect(e.query(q).rows).toEqual([]);
+    expect(e.query({ ...q, changedOnly: true }).rows[0].type).toBe('resize');
+    expect(variable(new Editor(parseSave(e.serialize(), 'empty.sav')), 'ABL').dimensions).toEqual([0]);
+    e.revertResize(v.id);
+    expect(e.query({ ...q, search: '追加' }).rows).toEqual([]);
+    expect(e.summary().changes).toBe(0);
+    expect(e.serialize()).toEqual(fixture('normal-binary'));
+    e.resize(v.id, [10]);
+    expect(e.query({ ...q, search: '8' }).rows[0].value).toBe('55');
+    e.reset(); e.resize(v.id, [10]);
+    expect(e.query({ ...q, search: '8' }).rows[0].value).toBe('0');
+  });
+  it('validates sizes atomically and rejects text arrays, scalars, and rank changes', () => {
+    const e = open('normal-binary'), v = variable(e, 'DA');
+    for (const dimensions of [[-1, 5], [1.5, 5], [NaN, 5], [Infinity, 5], [10001, 10000], [0, 2147483648]]) {
+      expect(() => e.resize(v.id, dimensions)).toThrow('error.resizeSize');
+    }
+    for (const dimensions of [[], [2], [2, 2, 2]]) expect(() => e.resize(v.id, dimensions)).toThrow('error.resizeRank');
+    expect(() => e.resize(variable(e, 'NAME').id, [2])).toThrow('error.resizeRank');
+    const text = open('normal-text');
+    expect(() => text.resize(variable(text, 'DA').id, [3, 3])).toThrow('error.resizeBinary');
+    expect(e.summary().changes).toBe(0);
+    expect(e.serialize()).toEqual(fixture('normal-binary'));
+    const dimensions = [3, 3]; e.resize(v.id, dimensions); dimensions[0] = -1;
+    expect(e.summary().variables[v.id].dimensions).toEqual([3, 3]);
+  });
+  it('paginates size changes together with value changes in at most 50 rows', () => {
+    const e = open('global-binary'), v = variable(e, 'GLOBAL');
+    e.resize(v.id, [60]);
+    for (let i = 0; i < 51; i++) e.set(v.id, String(i), '1234567');
+    const q = { scope: -1, variableId: v.id, search: '', changedOnly: true, page: 0 };
+    expect(e.query(q)).toMatchObject({ total: 52, pages: 2 });
+    expect(e.query(q).rows).toHaveLength(50);
+    expect(e.query(q).rows[0].type).toBe('resize');
+    expect(e.query({ ...q, page: 1 }).rows.map(row => row.key)).toEqual(['49', '50']);
+    expect(e.query({ ...q, search: '50' }).rows.map(row => row.key)).toEqual(['50']);
+  });
+});
+
 describe('binary sparse codec', () => {
   function document(v: Variable): Uint8Array {
     const head = new BinaryWriter(); MAGIC.forEach(b => head.u8(b)); head.i32(1808); head.i32(0);
@@ -146,5 +240,14 @@ describe('binary sparse codec', () => {
     expect(e.document.variables[0].values.size).toBe(1);
     expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.at(-1)?.value).toBe('8');
     e.set(0, '0,0', '12'); expect(e.serialize().length).toBeLessThan(120);
+    e.resize(0, [20000, 5000]);
+    e.set(0, '19999,4999', String(MAX_INT));
+    expect(e.query({ scope: -1, search: '', changedOnly: false, page: 1_999_999 }).rows.at(-1)?.value).toBe(String(MAX_INT));
+    const resized = parseSave(e.serialize(), 'global.sav');
+    expect(resized.variables[0].values.size).toBe(2);
+    expect(resized.original.length).toBeLessThan(150);
+    e.resize(0, [0, 5000]);
+    expect(parseSave(e.serialize(), 'global.sav').variables[0].values.size).toBe(0);
+    e.reset(); expect(e.serialize()).toEqual(raw);
   });
 });

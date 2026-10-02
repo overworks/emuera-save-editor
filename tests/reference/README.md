@@ -21,6 +21,10 @@ The original writer generates six fixtures: normal/global saves in binary, UTF-8
 
 The TypeScript editor modifies these saves, then the original reader reads the results. [scripts/reference-check.ts](../../scripts/reference-check.ts) compares the complete value dictionaries before and after editing to ensure only the intended values changed. The text reader needs array sizes supplied by the host; the adapter uses 128-element arrays for legacy sections, which is sufficient for these fixtures and is not a claim about other games' sizes.
 
+For binary saves, the adapter also reports each array's saved dimensions, including empty arrays. The check grows, shrinks, mixes growth and shrinkage across axes, and empties arrays of each available type and rank in both normal and global fixtures. Expected values come from the original reader's pre-edit dictionary at unchanged coordinates, plus explicitly assigned new values. Resetting all edits and sizes must reproduce the original bytes.
+
+The format evidence for resizing is the per-axis `ReadInt32()` lengths in the upstream `EraBinaryDataReader1808.ReadIntArray*` and `ReadStrArray*` methods. The reader uses separate destination array sizes supplied by the game and may copy only the overlapping region. Changing a save's dimensions therefore does not change the game's variable declarations. The adapter allocates destination arrays using the saved dimensions to check every exported cell.
+
 This checks save-code compatibility without running a game. It does not validate game script rules, actual user saves, or every Emuera fork. The C# code is used only for development checks and is not included in the browser bundle.
 
 ## Running the checks

@@ -4,9 +4,9 @@ This is the repository-wide entry point for coding agents, maintained in English
 
 ## Product scope
 
-Emuera Save Studio is a static browser application with English, Korean, and Japanese interfaces. It edits existing values in normal and global saves from standard Emuera, using text or binary formats. Files stay in browser memory. The baseline is Emuera 1.824 at commit `85db4cbd5eb2efe6c5b5449ada351a21a20db60b`; see [reference provenance](tests/reference/README.md).
+Emuera Save Studio is a static browser application with English, Korean, and Japanese interfaces. It edits values in normal and global saves from standard Emuera, using text or binary formats, and resizes binary arrays without changing their rank. Files stay in browser memory. The baseline is Emuera 1.824 at commit `85db4cbd5eb2efe6c5b5449ada351a21a20db60b`; see [reference provenance](tests/reference/README.md).
 
-Current scope excludes character/variable creation or deletion, array resizing, format conversion, ERB/ERH execution, `_Rename.csv`, and fork-specific EM/EM+EE formats. There is no backend, account system, persistent session storage, PWA, or `file://` entry point.
+Current scope excludes character/variable creation or deletion, text array resizing, format conversion, ERB/ERH execution, `_Rename.csv`, and fork-specific EM/EM+EE formats. There is no backend, account system, persistent session storage, PWA, or `file://` entry point. Planned support is tracked in the README.
 
 ## Code map
 
@@ -33,10 +33,10 @@ Current scope excludes character/variable creation or deletion, array resizing, 
 ## Implementation invariants
 
 1. Store save integers as `bigint`. Use decimal strings for input, display, and UI-facing results; never convert save values through JavaScript `number`.
-2. Treat the parsed document and its original bytes as immutable. `Editor.edits` overlays changes. A variable's `id` is its position in `document.variables`; `scope === -1` means shared/global, otherwise scope is the character's position, not its `NO` value. Scalar keys are `''`; array keys are comma-separated coordinates such as `'1,2,3'`.
-3. Keep arrays sparse. Missing binary cells mean `0n` or `''` within declared bounds. Query pages contain at most 50 rows; pagination and export validation must not expand an entire sparse array.
+2. Treat the parsed document and its original bytes as immutable. `Editor.edits` overlays values; a separate resize overlay stores binary array dimensions. Resizing keeps coordinates, type, and rank. Out-of-bounds values and edits stay in memory for restoration but are excluded from export, queries, and active change counts. `Editor.reset()` clears both overlays. A variable's `id` is its position in `document.variables`; `scope === -1` means shared/global, otherwise scope is the character's position, not its `NO` value. Scalar keys are `''`; array keys are comma-separated coordinates such as `'1,2,3'`.
+3. Keep arrays sparse. Missing binary cells mean `0n` or `''` within current bounds. Query pages contain at most 50 rows, including array size changes in the changes view; pagination, resizing, and export validation must not expand an entire sparse array.
 4. Export by patching edited text value spans or re-encoding only changed binary variables. Preserve untouched bytes, headers, variable order, BOM, and line endings. No-op and fully reverted exports must be byte-identical to the input.
-5. Reparse the exact export and verify variable structure and all logical values before returning it. Keep integer, encoding, bounds, malformed-file, and resource-limit checks. Reject unsupported versions/tags rather than guessing a layout.
+5. Reparse the exact export and verify variable structure against the intended dimensions and all logical values within those bounds before returning it. Keep integer, encoding, bounds, malformed-file, and resource-limit checks. Reject unsupported versions/tags rather than guessing a layout.
 6. Text cells are editable only when they have entries in `textSpans`. Do not invent trailing array sizes or fill gaps in ragged text arrays. Reject reserved text delimiters, line breaks, NUL, and characters that cannot round-trip through the original encoding.
 7. A Worker `open` request replaces the current editor only after the new save parses successfully. Failed opens must preserve the existing session. Keep the heavy processing in the Worker.
 8. CSV names are optional display metadata. They must not change save structure or values; conflicts retain the first loaded name and produce warnings.

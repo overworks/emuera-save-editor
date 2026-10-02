@@ -100,3 +100,61 @@ test('mobile: working sample, navigable dialog and no horizontal overflow', asyn
   await expect(page.getByRole('dialog')).not.toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 });
+
+test('binary: resize, edit new cells, review changes, download, reopen and restore size', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('세이브 파일 선택').setInputFiles('tests/fixtures/global-binary.sav');
+  await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (12)' });
+  await page.getByRole('button', { name: '배열 크기 변경', exact: true }).click();
+  await expect(page.getByLabel('1차원 길이')).toBeFocused();
+  await page.getByLabel('1차원 길이').fill('100000001');
+  await page.getByRole('button', { name: '변경 적용', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('1억');
+  await page.getByLabel('1차원 길이').fill('15');
+  await page.getByRole('button', { name: '변경 적용', exact: true }).click();
+  await page.getByRole('button', { name: 'GLOBAL:14 값 수정', exact: true }).click();
+  await page.getByLabel('새로운 값').fill('9223372036854775807');
+  await page.getByRole('button', { name: '변경 적용', exact: true }).click();
+  await page.getByRole('button', { name: /변경 내역/ }).click();
+  await expect(page.getByText('값 1개 변경 · 배열 1개 크기 변경')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'GLOBAL 배열 크기 변경', exact: true })).toContainText('12');
+  await expect(page.getByRole('button', { name: 'GLOBAL 배열 크기 변경', exact: true })).toContainText('15');
+
+  // Failed opens preserve both cell edits and size changes in the Worker.
+  page.once('dialog', d => d.accept());
+  await page.getByLabel('세이브 파일 선택').setInputFiles({ name: 'bad.sav', mimeType: 'application/octet-stream', buffer: Buffer.from('bad') });
+  await expect(page.getByRole('alert')).toBeVisible();
+  await expect(page.getByText('값 1개 변경 · 배열 1개 크기 변경')).toBeVisible();
+  const pending = page.waitForEvent('download');
+  await page.getByRole('button', { name: '세이브 다운로드', exact: true }).click();
+  const path = (await (await pending).path())!;
+  const saved = parseSave(new Uint8Array(readFileSync(path)), 'resized.sav');
+  expect(saved.variables[0].dimensions).toEqual([15]);
+  expect(saved.variables[0].values.get('14')).toBe(9223372036854775807n);
+  await page.getByRole('button', { name: 'GLOBAL 배열 크기 되돌리기', exact: true }).click();
+  await expect(page.getByText('원본 상태', { exact: true })).toBeVisible();
+  const original = page.waitForEvent('download');
+  await page.getByRole('button', { name: '세이브 다운로드', exact: true }).click();
+  expect(readFileSync((await (await original).path())!)).toEqual(readFileSync('tests/fixtures/global-binary.sav'));
+  await page.getByLabel('세이브 파일 선택').setInputFiles(path);
+  await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (15)' });
+  await expect(page.getByRole('button', { name: 'GLOBAL:14 값 수정', exact: true })).toContainText('9223372036854775807');
+  await page.getByRole('button', { name: '배열 크기 변경', exact: true }).click();
+  await page.getByLabel('1차원 길이').fill('0');
+  await page.getByRole('button', { name: '변경 적용', exact: true }).click();
+  await page.getByRole('button', { name: /변경 내역/ }).click();
+  await expect(page.getByRole('button', { name: 'GLOBAL 배열 크기 변경', exact: true })).toBeVisible();
+  page.once('dialog', d => d.accept());
+  await page.getByRole('button', { name: '전체 되돌리기', exact: true }).click();
+  await expect(page.getByText('원본 상태', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: '전체 보기', exact: true }).click();
+  await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (15)' });
+  await expect(page.getByRole('button', { name: 'GLOBAL:14 값 수정', exact: true })).toContainText('9223372036854775807');
+});
+
+test('text arrays keep their saved bounds and offer no resizing control', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('세이브 파일 선택').setInputFiles('tests/fixtures/global-text.sav');
+  await page.getByLabel('변수 그룹', { exact: true }).selectOption({ label: 'GLOBAL (11)' });
+  await expect(page.getByRole('button', { name: '배열 크기 변경', exact: true })).toHaveCount(0);
+});

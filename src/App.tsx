@@ -33,6 +33,7 @@ export function App() {
   const [warnings, setWarnings] = useState<Message[]>([]);
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<Row>();
+  const [resizing, setResizing] = useState<Summary['variables'][number]>();
   const [help, setHelp] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
@@ -104,7 +105,7 @@ export function App() {
   }
   async function revert(row?: Row) {
     if (!row && !window.confirm(t('confirmRevert'))) return;
-    try { setSummary(await rpc<Summary>(row ? { type: 'revert', id: row.variableId, key: row.key } : { type: 'reset' })); }
+    try { setSummary(await rpc<Summary>(row ? row.type === 'resize' ? { type: 'revertResize', id: row.variableId } : { type: 'revert', id: row.variableId, key: row.key } : { type: 'reset' })); }
     catch (e) { setError(messageOf(e)); }
   }
   function scopeName(position: number, name = '') {
@@ -112,6 +113,11 @@ export function App() {
   }
   const title = scope === 'all' ? t('allVariables') : scopeName(scope, summary?.characters.find(c => c.scope === scope)?.name);
   const selectedVariables = summary?.variables.filter(v => scope === 'all' || v.scope === scope) ?? [];
+  const selectedVariable = selectedVariables.find(v => v.id === variableId);
+  function editRow(row: Row) {
+    if (row.type === 'resize') setResizing(summary?.variables.find(v => v.id === row.variableId));
+    else setEditing(row);
+  }
 
   return <div className="app" onDragEnter={e => {
     if (!e.dataTransfer.types.includes('Files')) return;
@@ -165,27 +171,30 @@ export function App() {
         </aside><div className="editor-main">
           <div className="editor-title"><div><h2>{title}</h2><span>{t('variableCount', { count: selectedVariables.length })}</span></div><div className="segmented"><button className={!changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(false); setPage(0); }}>{t('showAll')}</button><button className={changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(true); chooseScope('all'); }}>{t('changes')} <span>{number(summary.changes)}</span></button></div></div>
           <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${v.scope}` : ''} ({number(v.count)})</option>)}</select></div></div>
+          {summary.format === 'binary' && !!selectedVariable?.dimensions.length && <div className="array-toolbar"><span>{t('arraySize')} <code>{selectedVariable.dimensions.join(' × ')}</code></span><button className="button secondary small" onClick={() => setResizing(selectedVariable)} disabled={!!busy || querying}>{t('resizeArray')}</button></div>}
           <div className="data-table-wrap" aria-busy={querying}><table className="data-table"><thead><tr><th>{t('variableIndex')}</th><th>{t('label')}</th><th>{changedOnly ? t('beforeAfter') : t('currentValue')}</th><th><span className="visually-hidden">{t('edit')}</span></th></tr></thead><tbody>
-            {results.rows.map(row => <tr key={`${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
+            {results.rows.map(row => <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
               <td><div className="variable-name"><span className={`type-icon ${row.kind}`}>{row.kind === 'int' ? <Hash size={13} /> : <span>Aa</span>}</span><code>{row.name}{row.key !== '' && <span className="index">:{row.key.replace(/,/g, ':')}</span>}</code></div>{scope === 'all' && <small className="row-scope">{scopeName(row.scope, row.scopeName)}</small>}</td>
-              <td className="cell-label">{row.label || <span className="muted">—</span>}</td><td><button className="value-button" aria-label={t('editCell', { cell: cellName(row) })} onClick={() => setEditing(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button></td>
-              <td className="row-actions">{row.changed ? <button className="icon-button" title={t('revertOriginal')} aria-label={t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => setEditing(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
+              <td className="cell-label">{row.type === 'resize' ? t('arraySize') : row.label || <span className="muted">—</span>}</td><td><button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button></td>
+              <td className="row-actions">{row.changed ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
             </tr>)}
           </tbody></table>{!results.rows.length && <div className="empty-results"><Search size={29} /><strong>{changedOnly ? t('noChanges') : t('noResults')}</strong><p>{changedOnly ? t('noChangesHint') : t('noResultsHint')}</p></div>}</div>
           <div className="pagination"><span>{t('itemCount', { count: results.total })}{querying && <LoaderCircle className="spin" size={13} />}</span><div><button className="icon-button" aria-label={t('previousPage')} disabled={results.page === 0 || querying} onClick={() => setPage(results.page - 1)}><ChevronLeft size={17} /></button><label><span className="visually-hidden">{t('page')}</span><input aria-label={t('page')} key={results.page} defaultValue={results.page + 1} inputMode="numeric" onKeyDown={e => { if (e.key === 'Enter') { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) setPage(Math.max(0, Math.min(results.pages - 1, Math.floor(n) - 1))); } }} /></label><span>/ {number(results.pages)}</span><button className="icon-button" aria-label={t('nextPage')} disabled={results.page >= results.pages - 1 || querying} onClick={() => setPage(results.page + 1)}><ChevronRight size={17} /></button></div></div>
         </div></div>
         {warnings.length > 0 && <details className="csv-warnings"><summary>{t('csvWarnings', { count: warnings.length })}</summary><ul>{warnings.slice(0, 100).map((w, i) => <li key={i}>{message(w)}</li>)}</ul>{warnings.length > 100 && <p>{t('firstWarnings')}</p>}</details>}
-        <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
+        <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.resizedArrays ? t('changesWithResizes', { values: summary.changes - summary.resizedArrays, arrays: summary.resizedArrays }) : summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
       </section>}
     </main>
     <footer><span><LockKeyhole size={13} />{t('footerPrivacy')}</span><div>{t('baseline')}<span className="footer-dot">·</span><a href="https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b" target="_blank" rel="noreferrer">{t('formatReference')}<ArrowUpRight size={12} /></a></div></footer>
     {dragging && <div className="drag-overlay"><Upload size={48} /><h2>{t('dropTitle')}</h2><p>{t('dropHint')}</p></div>}
     {editing && <EditDialog row={editing} displayScope={scopeName(editing.scope, editing.scopeName)} onClose={() => setEditing(undefined)} onSave={async value => { const next = await rpc<Summary>({ type: 'set', id: editing.variableId, key: editing.key, value }); setSummary(next); setEditing(undefined); }} />}
+    {resizing && <ResizeDialog variable={resizing} displayScope={scopeName(resizing.scope, summary?.characters.find(c => c.scope === resizing.scope)?.name)} onClose={() => setResizing(undefined)} onSave={async dimensions => { const next = await rpc<Summary>({ type: 'resize', id: resizing.id, dimensions }); setSummary(next); setPage(0); setResizing(undefined); }} />}
     {help && <Modal onClose={() => setHelp(false)} title={summary ? t('fileHelpTitle') : t('helpTitle')}><div className="help-content">
       {summary && <dl><dt>{t('fileFormat')}</dt><dd>{summary.format === 'binary' ? t('binary') : t('text')} · {summary.formatVersion || t('legacyFormat')}</dd><dt>{t('gameVersion')}</dt><dd>{summary.gameCode} / {summary.gameVersion}</dd><dt>{t('saveDescription')}</dt><dd>{summary.description || t('none')}</dd><dt>{t('encoding')}</dt><dd>{formatEncoding(summary.encoding)}</dd></dl>}
       <ol><li>{t('helpOpen')}</li><li>{t('helpEdit')}</li><li>{t('helpDownload')}</li></ol>
       <p>{t('helpLabels')}</p>
       <p>{t('helpEncoding')}</p>
+      <p>{t('helpResize')}</p>
       <p className="help-note">{t('helpLimits')}</p>
     </div></Modal>}
   </div>;
@@ -216,6 +225,28 @@ function EditDialog({ row, displayScope, onClose, onSave }: { row: Row; displayS
     <label className="edit-label" htmlFor="edit-value">{t('newValue')}</label>{row.kind === 'int' ? <input id="edit-value" className="edit-input mono" value={value} onChange={e => setValue(e.target.value)} data-initial-focus autoComplete="off" disabled={pending} /> : <textarea id="edit-value" className="edit-input" rows={4} value={value} onChange={e => setValue(e.target.value)} data-initial-focus disabled={pending} />}
     <p className="input-hint">{row.kind === 'int' ? t('integerHint') : t('stringHint')}</p>
     <div className="original-box"><span>{t('originalValue')}</span><code>{row.original || t('emptyString')}</code></div>
+    {error && <p className="field-error" role="alert">{message(error)}</p>}
+    <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose} disabled={pending}>{t('cancel')}</button><button type="submit" className="button primary" disabled={pending}>{pending ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}{t('apply')}</button></div>
+  </form></Modal>;
+}
+
+function ResizeDialog({ variable, displayScope, onClose, onSave }: { variable: Summary['variables'][number]; displayScope: string; onClose: () => void; onSave: (dimensions: number[]) => Promise<void> }) {
+  const { t, message } = useLocale();
+  const [lengths, setLengths] = useState(variable.dimensions.map(String));
+  const [error, setError] = useState<Message>();
+  const [pending, setPending] = useState(false);
+  return <Modal title={t('resizeArray')} onClose={() => { if (!pending) onClose(); }}><form onSubmit={async e => {
+    e.preventDefault(); setPending(true); setError(undefined);
+    try {
+      if (lengths.some(n => !/^\d+$/.test(n.trim()))) throw new SaveError('error.resizeSize');
+      await onSave(lengths.map(n => Number(n.trim())));
+    } catch (e) { setError(messageOf(e)); setPending(false); }
+  }}>
+    <div className="edit-meta"><span>{displayScope}</span><code>{variable.name}</code><strong>{variable.dimensions.join(' × ')}</strong></div>
+    <div className="resize-dimensions">{lengths.map((length, axis) => <div key={axis}><label className="edit-label" htmlFor={`dimension-${axis}`}>{t('dimensionSize', { axis: axis + 1 })}</label><input id={`dimension-${axis}`} className="edit-input mono" inputMode="numeric" value={length} onChange={e => setLengths(current => current.map((n, i) => i === axis ? e.target.value : n))} data-initial-focus={axis === 0 || undefined} aria-describedby="resize-hint" autoComplete="off" disabled={pending} /></div>)}</div>
+    <p id="resize-hint" className="input-hint">{t('resizeHint')}</p>
+    <div className="original-box"><span>{t('originalSize')}</span><code>{variable.originalDimensions.join(' × ')}</code></div>
+    <p className="resize-note">{t('resizeRetention')}</p><p className="resize-note">{t('resizeCompatibility')}</p>
     {error && <p className="field-error" role="alert">{message(error)}</p>}
     <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose} disabled={pending}>{t('cancel')}</button><button type="submit" className="button primary" disabled={pending}>{pending ? <LoaderCircle size={16} className="spin" /> : <Check size={16} />}{t('apply')}</button></div>
   </form></Modal>;
