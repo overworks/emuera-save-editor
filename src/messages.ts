@@ -186,6 +186,7 @@ export const messages = {
   footerPrivacy: ['No uploads · No installation', '파일 전송 없음 · 설치 필요 없음', 'ファイル送信なし · インストール不要'],
   baseline: ['Based on standard Emuera 1.824', '표준 Emuera 1.824 기준', '標準 Emuera 1.824 準拠'],
   formatReference: ['Format reference', '형식 참고', '形式の参考資料'],
+  githubRepository: ['GitHub repository', 'GitHub 저장소', 'GitHub リポジトリ'],
   dropTitle: ['Drop your save file', '세이브 파일을 놓아주세요', 'セーブファイルをドロップしてください'],
   dropHint: ['Open one .sav file at a time.', '한 번에 하나의 .sav 파일을 열 수 있습니다.', '.sav ファイルは一度に 1 つ開けます。'],
   fileHelpTitle: ['File information and help', '파일 정보와 사용 안내', 'ファイル情報と使い方'],

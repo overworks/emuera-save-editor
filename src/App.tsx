@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUpRight, Braces, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, FileCode2, FilePlus2, FileText, FolderOpen, Hash, Layers3, ListFilter, LoaderCircle, LockKeyhole, Pencil, RotateCcw, Search, ShieldCheck, Table2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { rpc } from './client';
@@ -31,10 +31,8 @@ export function App() {
   const [search, setSearch] = useState('');
   const [changedOnly, setChangedOnly] = useState(false);
   const [page, setPage] = useState(0);
-  const [results, setResults] = useState<Page>(emptyPage);
   const [encoding, setEncoding] = useState<EncodingOption>('auto');
   const [busy, setBusy] = useState<MessageKey>();
-  const [querying, setQuerying] = useState(false);
   const [error, setError] = useState<Message>();
   const [notice, setNotice] = useState<Message>();
   const [warnings, setWarnings] = useState<Message[]>([]);
@@ -49,19 +47,22 @@ export function App() {
   const csvInput = useRef<HTMLInputElement>(null);
   const lastFile = useRef<File | undefined>(undefined);
   const dragDepth = useRef(0);
+  // Rows belong to a save revision and filter selection, including during debounce.
+  const query = useMemo(() => ({ summary, parameters: { scope, variableId, search, changedOnly, page, labelMatches: presetSearchMatches(preset, search, t) } }), [summary, scope, variableId, search, changedOnly, page, preset, t]);
+  const [queryResult, setQueryResult] = useState<{ source: typeof query; page: Page }>();
+  const results = queryResult?.page ?? emptyPage;
+  const querying = !!summary && queryResult?.source !== query;
 
   useEffect(() => {
-    if (!summary) return;
+    if (!query.summary) return;
     let active = true;
     const timer = setTimeout(() => {
-      setQuerying(true);
-      rpc<Page>({ type: 'query', query: { scope, variableId, search, changedOnly, page, labelMatches: presetSearchMatches(preset, search, t) } })
-        .then(result => { if (active) setResults(result); })
-        .catch(e => { if (active) { setError(messageOf(e)); setResults(emptyPage); } })
-        .finally(() => { if (active) setQuerying(false); });
+      rpc<Page>({ type: 'query', query: query.parameters })
+        .then(result => { if (active) setQueryResult({ source: query, page: result }); })
+        .catch(e => { if (active) { setError(messageOf(e)); setQueryResult({ source: query, page: emptyPage }); } });
     }, 120);
     return () => { active = false; clearTimeout(timer); };
-  }, [summary, scope, variableId, search, changedOnly, page, preset, t]);
+  }, [query]);
   useEffect(() => {
     if (!summary?.changes) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
@@ -77,7 +78,7 @@ export function App() {
     try {
       if (file.size > MAX_FILE_BYTES) throw new SaveError('error.fileSize');
       const next = await rpc<Summary>({ type: 'open', filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()), encoding });
-      lastFile.current = file; setSummary(next); setResults(emptyPage); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]); setPresetId('');
+      lastFile.current = file; setSummary(next); setQueryResult(undefined); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]); setPresetId('');
     } catch (e) { setError(messageOf(e, 'error.fileRead')); }
     finally { setBusy(undefined); }
   }
@@ -208,11 +209,11 @@ export function App() {
               <td><strong>{scopeName(row.character.scope, row.character.name)}</strong><small className="row-scope">NO {row.character.no}</small></td>
               <td className="cell-label">{t(row.type === 'cloneCharacter' ? 'characterAdded' : 'characterDeleted')}</td>
               <td><span className="variable-shape">{row.character.deleted ? t('deletedPosition', { index: String(row.character.originalIndex) }) : `${t('characterPosition')} #${row.character.index}`}<small>{t('variableCount', { count: row.character.variables })}</small></span></td>
-              <td className="row-actions"><button className="icon-button" aria-label={t(row.type === 'cloneCharacter' ? 'undoCharacterClone' : 'restoreCharacter', { name: scopeName(row.character.scope, row.character.name) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button></td>
+              <td className="row-actions"><button className="icon-button" aria-label={t(row.type === 'cloneCharacter' ? 'undoCharacterClone' : 'restoreCharacter', { name: scopeName(row.character.scope, row.character.name) })} onClick={() => void revert(row)} disabled={!!busy || querying}><RotateCcw size={14} /></button></td>
             </tr> : <tr key={`${row.type}:${row.variableId}:${row.key}`} className={row.changed ? 'modified' : ''}>
               <td><div className="variable-name"><span className={`type-icon ${row.kind}`}>{row.kind === 'int' ? <Hash size={13} /> : <span>Aa</span>}</span><code>{row.name}{row.key !== '' && <span className="index">:{row.key.replace(/,/g, ':')}</span>}</code></div>{scope === 'all' && <small className="row-scope">{scopeName(row.scope, row.scopeName)}</small>}</td>
               <td className="cell-label">{row.automatic ? <span title={t('automaticReferenceHint')}>{t('automaticReference')}</span> : row.type === 'add' ? t('variableAdded') : row.type === 'delete' ? t('variableDeleted') : row.type === 'resize' ? t('arraySize') : <PresetLabel preset={preset} row={row} />}</td><td>{row.type === 'add' || row.type === 'delete' ? <VariableShape variable={row} /> : <button className="value-button" aria-label={row.type === 'resize' ? t('resizeVariable', { name: row.name }) : t('editCell', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}>{row.changed && <span className="previous-value" title={row.original}>{row.original || t('emptyValue')}<ArrowRight size={12} /></span>}<span className="value-text">{row.value || <span className="empty-string">{t('emptyString')}</span>}</span>{row.changed && <span className="change-dot" />}</button>}</td>
-              <td className="row-actions">{row.changed && !row.automatic ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'add' ? t('cancelVariableAddition', { name: row.name }) : row.type === 'delete' ? t('restoreVariable', { name: row.name }) : row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy}><RotateCcw size={14} /></button> : <button className="icon-button" title={row.automatic ? t('automaticReferenceHint') : t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
+              <td className="row-actions">{row.changed && !row.automatic ? <button className="icon-button" title={t('revertOriginal')} aria-label={row.type === 'add' ? t('cancelVariableAddition', { name: row.name }) : row.type === 'delete' ? t('restoreVariable', { name: row.name }) : row.type === 'resize' ? t('revertArraySize', { name: row.name }) : t('revertCell', { cell: cellName(row) })} onClick={() => void revert(row)} disabled={!!busy || querying}><RotateCcw size={14} /></button> : <button className="icon-button" title={row.automatic ? t('automaticReferenceHint') : t('editValue')} aria-label={t('editCellAction', { cell: cellName(row) })} onClick={() => editRow(row)} disabled={!!busy || querying}><Pencil size={14} /></button>}</td>
             </tr>)}
           </tbody></table>{!results.rows.length && <div className="empty-results"><Search size={29} /><strong>{changedOnly ? t('noChanges') : t('noResults')}</strong><p>{changedOnly ? t('noChangesHint') : t('noResultsHint')}</p></div>}</div>
           <div className="pagination"><span>{t('itemCount', { count: results.total })}{querying && <LoaderCircle className="spin" size={13} />}</span><div><button className="icon-button" aria-label={t('previousPage')} disabled={results.page === 0 || querying} onClick={() => setPage(results.page - 1)}><ChevronLeft size={17} /></button><label><span className="visually-hidden">{t('page')}</span><input aria-label={t('page')} key={results.page} defaultValue={results.page + 1} inputMode="numeric" onKeyDown={e => { if (e.key === 'Enter') { const n = Number(e.currentTarget.value); if (Number.isFinite(n)) setPage(Math.max(0, Math.min(results.pages - 1, Math.floor(n) - 1))); } }} /></label><span>/ {number(results.pages)}</span><button className="icon-button" aria-label={t('nextPage')} disabled={results.page >= results.pages - 1 || querying} onClick={() => setPage(results.page + 1)}><ChevronRight size={17} /></button></div></div>
@@ -221,7 +222,11 @@ export function App() {
         <div className="save-bar"><div className="save-status"><span className={`status-dot ${summary.changes ? 'changed' : ''}`} /><strong>{summary.addedCharacters || summary.deletedCharacters ? <>{t('characterChanges', { added: summary.addedCharacters, deleted: summary.deletedCharacters })}<small>{t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables })}</small></> : summary.addedVariables || summary.deletedVariables ? t('changesWithStructure', { values: summary.valueChanges, arrays: summary.resizedArrays, added: summary.addedVariables, deleted: summary.deletedVariables }) : summary.resizedArrays ? t('changesWithResizes', { values: summary.valueChanges, arrays: summary.resizedArrays }) : summary.changes ? t('changedCount', { count: summary.changes }) : t('originalState')}</strong><span>{t('originalKept')}</span></div><div className="save-actions"><button className="text-button" disabled={!summary.changes || !!busy} onClick={() => void revert()}><RotateCcw size={15} />{t('revertAll')}</button><button className="button primary" onClick={() => void download()} disabled={!!busy}><ArrowDownToLine size={17} />{t('download')}</button></div></div>
       </section>}
     </main>
-    <footer><span><LockKeyhole size={13} />{t('footerPrivacy')}</span><div>{t('baseline')}<span className="footer-dot">·</span><a href="https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b" target="_blank" rel="noreferrer">{t('formatReference')}<ArrowUpRight size={12} /></a></div></footer>
+    <footer>
+      <span><LockKeyhole size={13} />{t('footerPrivacy')}</span>
+      <div>{t('baseline')}<span className="footer-dot">·</span><a href="https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b" target="_blank" rel="noreferrer">{t('formatReference')}<ArrowUpRight size={12} /></a></div>
+      <a href="https://github.com/overworks/emuera-save-editor" target="_blank" rel="noreferrer">{t('githubRepository')}<ArrowUpRight size={12} /></a>
+    </footer>
     {dragging && <div className="drag-overlay"><Upload size={48} /><h2>{t('dropTitle')}</h2><p>{t('dropHint')}</p></div>}
     {editing && <EditDialog row={editing} displayScope={scopeName(editing.scope, editing.scopeName)} onClose={() => setEditing(undefined)} onSave={async value => { const next = await rpc<Summary>({ type: 'set', id: editing.variableId, key: editing.key, value }); setSummary(next); setEditing(undefined); }} />}
     {resizing && <ResizeDialog variable={resizing} displayScope={scopeName(resizing.scope, summary?.characters.find(c => c.scope === resizing.scope)?.name)} onClose={() => setResizing(undefined)} onSave={async dimensions => { const next = await rpc<Summary>({ type: 'resize', id: resizing.id, dimensions }); setSummary(next); setPage(0); setResizing(undefined); }} />}
