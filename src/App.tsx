@@ -10,6 +10,8 @@ import { messageOf } from './core/diagnostic';
 import type { Message, MessageKey } from './core/diagnostic';
 import { LanguageSelect, useLocale } from './locale';
 import { GamePresets, PresetLabel } from './GamePresets';
+import { FileDropZone } from './FileDropZone';
+import { GitHubIcon } from './GitHubIcon';
 import { gamePresets, presetReference, presetSearchMatches } from './presets';
 import demoUrl from './assets/demo.sav?url';
 
@@ -41,7 +43,6 @@ export function App() {
   const [error, setError] = useState<Message>();
   const [notice, setNotice] = useState<Message>();
   const [warnings, setWarnings] = useState<Message[]>([]);
-  const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<VariableRow>();
   const [resizing, setResizing] = useState<Summary['variables'][number]>();
   const [adding, setAdding] = useState(false);
@@ -51,7 +52,6 @@ export function App() {
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
   const pendingFile = useRef<File | undefined>(undefined);
-  const dragDepth = useRef(0);
   // Rows belong to a save revision and filter selection, including during debounce.
   const query = useMemo(() => ({ summary, parameters: { scope, variableId, search, changedOnly, page, labelMatches: presetSearchMatches(preset, search, t) } }), [summary, scope, variableId, search, changedOnly, page, preset, t]);
   const [queryResult, setQueryResult] = useState<{ source: typeof query; page: Page }>();
@@ -133,12 +133,17 @@ export function App() {
       await openFile(new File([await response.arrayBuffer()], 'sample.sav'));
     } catch (e) { setError(messageOf(e, 'error.sample')); }
   }
-  async function loadLabels(files: FileList | null) {
-    if (!files?.length || busy) return;
-    setBusy('readingCsv'); setError(undefined);
+  function dropSave(files: File[]) {
+    if (files.length !== 1 || !/\.sav$/i.test(files[0].name)) { setError({ key: 'error.dropFiles' }); return; }
+    void openFile(files[0]);
+  }
+  async function loadLabels(files: File[]) {
+    if (!files.length || !summary || busy) return;
+    setBusy('readingCsv'); setError(undefined); setNotice(undefined);
     try {
-      if ([...files].reduce((n, f) => n + f.size, 0) > MAX_FILE_BYTES) throw new SaveError('error.csvSize');
-      const data = await Promise.all([...files].map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
+      if (files.some(f => !/\.csv$/i.test(f.name))) throw new SaveError('error.csvFiles');
+      if (files.reduce((n, f) => n + f.size, 0) > MAX_FILE_BYTES) throw new SaveError('error.csvSize');
+      const data = await Promise.all(files.map(async f => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
       const result = await rpc<{ summary: Summary; warnings: Message[] }>({ type: 'labels', files: data, encoding });
       setSummary(result.summary); setWarnings(result.warnings); setNotice({ key: 'labelsApplied' });
     } catch (e) { setError(messageOf(e)); }
@@ -191,21 +196,19 @@ export function App() {
     else setEditing(row);
   }
 
-  return <div className="app" onDragEnter={e => {
+  return <div className="app" onDragOver={e => {
     if (!e.dataTransfer.types.includes('Files')) return;
-    e.preventDefault(); dragDepth.current++; setDragging(true);
-  }} onDragLeave={e => { e.preventDefault(); if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
-    onDragOver={e => e.preventDefault()} onDrop={e => {
-      e.preventDefault(); dragDepth.current = 0; setDragging(false);
-      if (e.dataTransfer.files.length === 1) void openFile(e.dataTransfer.files[0]);
-      else setError({ key: 'error.dropFiles' });
-    }}>
+    e.preventDefault(); e.dataTransfer.dropEffect = 'none';
+  }} onDrop={e => {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault(); setError({ key: 'error.dropOutside' });
+  }}>
     <header className="topbar"><div className="topbar-inner">
       <a href="./" className="brand" onClick={e => { e.preventDefault(); setHelp(true); }} aria-label={t('helpTitle')}><span className="logo"><Braces size={23} strokeWidth={2.5} /></span><span>Emuera <strong>Save Studio</strong></span><span className="version">BETA</span></a>
       <div className="top-right"><LanguageSelect /><span className="local-badge"><span className="status-dot" />{t('localOnly')}</span><button className="icon-button" aria-label={t('help')} onClick={() => setHelp(true)}><CircleHelp size={20} /></button></div>
     </div></header>
     <input ref={fileInput} type="file" accept=".sav" className="visually-hidden" aria-label={t('selectSave')} disabled={!!busy} onChange={e => { const file = e.target.files?.[0]; if (file) void openFile(file); e.target.value = ''; }} />
-    <input ref={csvInput} type="file" accept=".csv" multiple className="visually-hidden" aria-label={t('selectCsv')} disabled={!!busy} onChange={e => { void loadLabels(e.target.files); e.target.value = ''; }} />
+    <input ref={csvInput} type="file" accept=".csv" multiple className="visually-hidden" aria-label={t('selectCsv')} disabled={!summary || !!busy} onChange={e => { void loadLabels([...(e.target.files ?? [])]); e.target.value = ''; }} />
     <div className="messages" aria-live="polite">
       {error && <div className="message error" role="alert"><span>{message(error)}</span><button aria-label={t('dismissError')} onClick={() => setError(undefined)}><X size={16} /></button></div>}
       {notice && <div className="message success"><Check size={17} /><span>{message(notice)}</span><button aria-label={t('dismissNotice')} onClick={() => setNotice(undefined)}><X size={16} /></button></div>}
@@ -228,10 +231,12 @@ export function App() {
         </div>
         <div className="open-card">
           <div className="open-card-heading"><span>{t('newSession')}</span><span className="tiny-label">{t('localWorkspace')}</span></div>
-          <button className="drop-zone" onClick={() => fileInput.current?.click()} disabled={!!busy}>
-            <span className="upload-illustration"><FileText size={37} strokeWidth={1.4} /><span><Upload size={15} /></span></span>
-            <strong>{t('dropSave')}</strong><span>{t('chooseFile')}</span><small>{t('fileLimit')}</small>
-          </button>
+          <FileDropZone className="save-drop-zone" label={t('dropSave')} disabled={!!busy && ready} onFiles={dropSave}>
+            <button className="drop-zone" onClick={() => fileInput.current?.click()} disabled={!!busy}>
+              <span className="upload-illustration"><FileText size={37} strokeWidth={1.4} /><span><Upload size={15} /></span></span>
+              <strong>{t('dropSave')}</strong><span>{t('chooseFile')}</span><small>{t('fileLimit')}</small>
+            </button>
+          </FileDropZone>
           <div className="encoding-row"><label htmlFor="encoding-start">{t('textEncoding')}</label><select id="encoding-start" value={encoding} onChange={e => setEncoding(e.target.value as EncodingOption)}><EncodingOptions /></select></div>
           <button className="button primary full" onClick={() => fileInput.current?.click()} disabled={!!busy}><FolderOpen size={18} />{t('openSave')}<ArrowRight size={17} /></button>
           <div className="demo-link"><span>{t('tryFirst')}</span><button onClick={() => void demo()} disabled={!!busy}>{t('exploreSample')}<ArrowUpRight size={14} /></button></div>
@@ -239,12 +244,17 @@ export function App() {
         <div className="features"><Feature icon={Layers3} number="01" title={t('formatsTitle')} text={t('formatsDetail')} /><Feature icon={Table2} number="02" title={t('labelsTitle')} text={t('labelsDetail')} /><Feature icon={CheckCheck} number="03" title={t('changesTitle')} text={t('changesDetail')} /></div>
       </section> : <section className="workspace">
         <div className="workspace-heading"><div><div className="eyebrow">{t('workspaceEyebrow')}</div><h1>{t('editorTitle')}</h1><p>{t('editorSubtitle')}</p></div><button className="button secondary" onClick={() => fileInput.current?.click()} disabled={!!busy}><FolderOpen size={17} />{t('openAnother')}</button></div>
-        <div className="file-bar"><span className="file-icon"><FileCode2 size={23} /></span><div className="file-details"><strong>{summary.filename}</strong><span>{size(summary.bytes)}<i />{summary.format === 'binary' ? t('binary') : t('text')}<i />{formatEncoding(summary.encoding)}</span></div><span className="read-badge"><Check size={14} />{t('loaded')}</span><button className="icon-button" title={t('fileInfo')} aria-label={t('fileInfo')} onClick={() => setHelp(true)}><CircleHelp size={18} /></button></div>
+        <FileDropZone className="file-bar" label={t('dropSave')} disabled={!!busy} onFiles={dropSave}><span className="file-icon"><FileCode2 size={23} /></span><div className="file-details"><strong>{summary.filename}</strong><span>{size(summary.bytes)}<i />{summary.format === 'binary' ? t('binary') : t('text')}<i />{formatEncoding(summary.encoding)}</span><small className="file-drop-hint">{t('replaceSaveHint')}</small></div><span className="read-badge"><Check size={14} />{t('loaded')}</span><button className="icon-button" title={t('fileInfo')} aria-label={t('fileInfo')} onClick={() => setHelp(true)}><CircleHelp size={18} /></button></FileDropZone>
         <div className="editor-layout"><aside className="sidebar">
           <div className="sidebar-label">{t('browse')}</div><button className={`nav-item ${scope === 'all' ? 'selected' : ''}`} onClick={() => chooseScope('all')}><Layers3 size={17} />{t('allVariables')}<span>{number(summary.variables.filter(v => !v.deleted).length)}</span></button>
           <button className={`nav-item ${scope === -1 ? 'selected' : ''}`} onClick={() => chooseScope(-1)}><Braces size={18} />{summary.fileType === 'global' ? t('globalVariables') : t('sharedVariables')}<span>{number(summary.variables.filter(v => v.scope === -1 && !v.deleted).length)}</span></button>
           {activeCharacters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(activeCharacters.length)}</span></div><div className="character-list">{activeCharacters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.index} · NO {c.no}</small>{c.csv && <small title={c.csv.filename}>CSV · {c.csv.fields.NAME || c.csv.fields.CALLNAME || c.csv.fields.NICKNAME || c.csv.filename}</small>}</span></button>)}</div></>}
-          <div className="labels-card"><span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong><p className="csv-counts">{hasCsv ? <>{summary.labels > 0 && <span>{t('labelCount', { count: summary.labels })}</span>}{summary.characterLabels > 0 && <span>{t('characterCsvCount', { count: summary.characterLabels })}</span>}{summary.renames > 0 && <span>{t('renameCount', { count: summary.renames })}</span>}</> : t('labelsHint')}</p><button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{hasCsv ? t('addLabels') : t('loadCsv')}</button></div>
+          <FileDropZone className="labels-card" label={t('gameCsv')} disabled={!!busy} onFiles={files => void loadLabels(files)}>
+            <span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong>
+            <p className="csv-drop-hint">{t('dropCsv')}<span>{t('dropCsvHint')}</span></p>
+            <p className="csv-counts">{hasCsv ? <>{summary.labels > 0 && <span>{t('labelCount', { count: summary.labels })}</span>}{summary.characterLabels > 0 && <span>{t('characterCsvCount', { count: summary.characterLabels })}</span>}{summary.renames > 0 && <span>{t('renameCount', { count: summary.renames })}</span>}</> : t('labelsHint')}</p>
+            <button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{hasCsv ? t('addLabels') : t('loadCsv')}</button>
+          </FileDropZone>
           <label className="sidebar-encoding">{t('readEncoding')}<select value={encoding} onChange={e => setEncoding(e.target.value as EncodingOption)}><EncodingOptions /></select></label>
           {summary.format === 'text' && <button className="text-button reread" disabled={!!busy} onClick={() => void openFile()}>{t('reread')}</button>}
         </aside><div className="editor-main">
@@ -279,9 +289,8 @@ export function App() {
     <footer>
       <span><LockKeyhole size={13} />{t('footerPrivacy')}</span>
       <div>{t('baseline')}<span className="footer-dot">·</span><a href="https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b" target="_blank" rel="noreferrer">{t('formatReference')}<ArrowUpRight size={12} /></a></div>
-      <a href="https://github.com/overworks/emuera-save-editor" target="_blank" rel="noreferrer">{t('githubRepository')}<ArrowUpRight size={12} /></a>
+      <a className="icon-button" href="https://github.com/overworks/emuera-save-editor" target="_blank" rel="noreferrer" aria-label={t('githubRepository')} title={t('githubRepository')}><GitHubIcon /></a>
     </footer>
-    {dragging && <div className="drag-overlay"><Upload size={48} /><h2>{t('dropTitle')}</h2><p>{t('dropHint')}</p></div>}
     {editing && <EditDialog row={editing} displayScope={scopeName(editing.scope, editing.scopeName)} onClose={() => setEditing(undefined)} onSave={async value => { const next = await rpc<Summary>({ type: 'set', id: editing.variableId, key: editing.key, value }); setSummary(next); setEditing(undefined); }} />}
     {resizing && <ResizeDialog variable={resizing} displayScope={scopeName(resizing.scope, summary?.characters.find(c => c.scope === resizing.scope)?.name)} onClose={() => setResizing(undefined)} onSave={async dimensions => { const next = await rpc<Summary>({ type: 'resize', id: resizing.id, dimensions }); setSummary(next); setPage(0); setResizing(undefined); }} />}
     {adding && summary && <AddVariableDialog summary={summary} initialScope={scope === 'all' ? -1 : scope} onClose={() => setAdding(false)} onSave={async variable => {

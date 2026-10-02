@@ -22,6 +22,7 @@ Current scope excludes character creation without copying, individual text varia
 | [src/worker.ts](src/worker.ts), [src/client.ts](src/client.ts) | Worker-owned editor and request-ID-based message interface |
 | [src/core/session.ts](src/core/session.ts), [src/recovery.ts](src/recovery.ts), [tests/session.test.ts](tests/session.test.ts), [tests/e2e/recovery.spec.ts](tests/e2e/recovery.spec.ts) | Validated recovery journal, transactional IndexedDB storage, opt-in recovery and failure checks |
 | [src/App.tsx](src/App.tsx), [src/styles.css](src/styles.css) | File workflow, responsive editor, dialogs, and localized UI |
+| [src/FileDropZone.tsx](src/FileDropZone.tsx), [tests/e2e/file-drop.spec.ts](tests/e2e/file-drop.spec.ts) | Separate save/CSV drop areas, multiple CSV imports, and drag feedback |
 | [src/assets/demo.sav](src/assets/demo.sav) | Synthetic demo imported as a bundled asset using `?url` |
 | [tests/core.test.ts](tests/core.test.ts), [tests/e2e/editor.spec.ts](tests/e2e/editor.spec.ts) | Core regression checks and browser flows |
 | [tests/e2e/query-refresh.spec.ts](tests/e2e/query-refresh.spec.ts) | Timer-controlled checks for stale-row locking, character copy isolation, and exported values |

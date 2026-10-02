@@ -27,7 +27,7 @@ Switching languages preserves your open save, edits, search, and CSV labels. But
 
 ## Editing a save
 
-1. Open or drop one `save*.sav` or `global.sav` file into the app.
+1. Open one `save*.sav` or `global.sav` file with the file picker, or drop it in the save drop area. Once a save is open, drop another onto the filename bar to replace it.
 2. Select shared/global variables or a character. Search by variable name, CSV label, or exact array index. Use `1:2:3` for a multidimensional index.
 3. Click a value, enter its replacement, and apply the change. The **Changes** tab shows the original and current values. You can undo individual changes or reset them all.
 4. Choose **Download save** to save `original-name.edited.sav`.
@@ -75,7 +75,7 @@ Selecting or switching presets leaves save values and edits intact. The selectio
 
 ## CSV labels and encoding
 
-Choose **Load CSV** to load the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files. You can select multiple CSV files. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.
+After opening a save, drop the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files into **Game CSV labels**. You can drop multiple CSV files at once or select them with **Load CSV**. The dashed save and CSV areas handle their respective file types; dropping elsewhere does not open a file. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.
 
 `Chara*.csv` adds reference names, call names, nicknames, and names for the master. Its `NO` or `番号` must match the character's current saved `NO`; the filename and character position are not used for matching. Select a character and expand **Character CSV** to inspect the metadata. Names also appear beside saved name fields and `NO`, and label `RELATION` indices by character number. You can search these labels, including call names and nicknames for `RELATION`. Editing `NO` updates the association. Saved names remain unchanged; initial stats and character creation are not imported. Duplicate character numbers keep the first file's metadata.
 
