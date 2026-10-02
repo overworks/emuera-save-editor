@@ -193,20 +193,21 @@ internal static class Program {
         int chars = 0;
         void ints(string key) { layout.Add("base:" + key + ":int:1"); var a = new long[128]; r.ReadInt64Array(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i].ToString(); }
         void strs(string key) { layout.Add("base:" + key + ":string:1"); var a = new string[128]; r.ReadStringArray(a); for (int i = 0; i < a.Length; i++) result[key + ":" + i] = a[i] ?? ""; }
-        void sections(int scope, int rank, bool scalar) {
+        void sections(int scope, int rank, bool scalar, string section = "builtin") {
             string prefix = scope + ":";
+            void entry(string name, string kind, int dimensions) { layout.Add("extended:" + prefix + name + ":" + kind + ":" + dimensions + ":" + section); }
             if (scalar) {
-                foreach (var v in r.ReadStringExtended()) { layout.Add("extended:" + prefix + v.Key + ":string:0"); result[prefix + v.Key + ":"] = v.Value; }
-                foreach (var v in r.ReadInt64Extended()) { layout.Add("extended:" + prefix + v.Key + ":int:0"); result[prefix + v.Key + ":"] = v.Value.ToString(); }
+                foreach (var v in r.ReadStringExtended()) { entry(v.Key, "string", 0); result[prefix + v.Key + ":"] = v.Value; }
+                foreach (var v in r.ReadInt64Extended()) { entry(v.Key, "int", 0); result[prefix + v.Key + ":"] = v.Value.ToString(); }
             }
-            foreach (var v in r.ReadStringArrayExtended()) { layout.Add("extended:" + prefix + v.Key + ":string:1"); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i]; }
-            foreach (var v in r.ReadInt64ArrayExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:1"); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i].ToString(); }
+            foreach (var v in r.ReadStringArrayExtended()) { entry(v.Key, "string", 1); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i]; }
+            foreach (var v in r.ReadInt64ArrayExtended()) { entry(v.Key, "int", 1); for (int i = 0; i < v.Value.Count; i++) result[prefix + v.Key + ":" + i] = v.Value[i].ToString(); }
             if (rank < 2) return;
             r.ReadStringArray2DExtended();
-            foreach (var v in r.ReadInt64Array2DExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:2"); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Length; j++) result[prefix + v.Key + ":" + i + "," + j] = v.Value[i][j].ToString(); }
+            foreach (var v in r.ReadInt64Array2DExtended()) { entry(v.Key, "int", 2); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Length; j++) result[prefix + v.Key + ":" + i + "," + j] = v.Value[i][j].ToString(); }
             if (rank < 3) return;
             r.ReadStringArray3DExtended();
-            foreach (var v in r.ReadInt64Array3DExtended()) { layout.Add("extended:" + prefix + v.Key + ":int:3"); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Count; j++) for (int k = 0; k < v.Value[i][j].Length; k++) result[prefix + v.Key + ":" + i + "," + j + "," + k] = v.Value[i][j][k].ToString(); }
+            foreach (var v in r.ReadInt64Array3DExtended()) { entry(v.Key, "int", 3); for (int i = 0; i < v.Value.Count; i++) for (int j = 0; j < v.Value[i].Count; j++) for (int k = 0; k < v.Value[i][j].Length; k++) result[prefix + v.Key + ":" + i + "," + j + "," + k] = v.Value[i][j][k].ToString(); }
         }
         if (global) { ints("-1:GLOBAL"); strs("-1:GLOBALS"); result["description"] = ""; }
         else {
@@ -222,7 +223,7 @@ internal static class Program {
         result["chars"] = chars.ToString();
         if (r.SeekEmuStart()) {
             if (!global) { for (int c = 0; c < chars; c++) sections(c, r.DataVersion < 1803 ? 1 : 2, true); sections(-1, r.DataVersion < 1708 ? 1 : r.DataVersion < 1729 ? 2 : 3, true); }
-            if (global || r.DataVersion >= 1808) sections(-1, 3, false);
+            if (global || r.DataVersion >= 1808) sections(-1, 3, false, "user");
         }
         result["formatVersion"] = Math.Max(0, r.DataVersion).ToString();
         result["layout"] = JsonSerializer.Serialize(layout);

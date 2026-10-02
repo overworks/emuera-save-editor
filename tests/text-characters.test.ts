@@ -96,7 +96,7 @@ describe('text character structure', () => {
     expect(saved.variables.filter(v => v.name === 'RELATION').every(v => v.values.get('1') === -9223372036854775808n)).toBe(true);
   });
 
-  it('retains omitted references and rejects new cells, text variable operations and invalid string edits on copies', () => {
+  it('retains omitted references and rejects new cells, base variable deletion and invalid string edits on copies', () => {
     const e = new Editor(parseSave(fixture({ encoding: 'shift_jis', omitReferences: true }), 'omitted.sav', 'shift_jis'));
     expect(e.previewDeleteCharacter(0)).toEqual([]);
     e.deleteCharacter(0); const copy = e.cloneCharacter(2), name = variable(e, copy, 'NAME').id, ragged = variable(e, copy, 'C2D').id;
@@ -104,8 +104,9 @@ describe('text character structure', () => {
     for (const key of ['1,0', '2,1', '4,0']) expect(() => e.set(ragged, key, '1')).toThrow('error.cellBounds');
     expect(() => e.set(variable(e, -1, 'TARGET').id, '0', '1')).toThrow('error.cellBounds');
     expect(() => e.resize(ragged, [4,3])).toThrow('error.resizeBinary');
-    expect(() => e.deleteVariable(name)).toThrow('error.structureBinary');
-    expect(() => e.addVariable({ scope: copy, name: 'NEW', kind: 'int', dimensions: [] })).toThrow('error.structureBinary');
+    expect(() => e.deleteVariable(name)).toThrow('error.textBaseVariable');
+    const extra = e.addVariable({ scope: copy, name: 'NEW', kind: 'int', dimensions: [] });
+    e.set(extra, '', '9223372036854775807');
     const saved = parseSave(e.serialize(), 'omitted.sav', 'shift_jis');
     for (const ref of ['TARGET', 'ASSI', 'MASTER', 'PLAYER']) expect(saved.variables.find(v => v.name === ref)?.textSpans?.size).toBe(0);
   });

@@ -25,7 +25,7 @@ for (const encoding of ['utf-8', 'shift_jis'] as const) test(`text characters ${
   await dialog.getByRole('button', { name: '캐릭터 복제', exact: true }).click();
   await expect(page.getByRole('button', { name: /#3 · NO 7/ })).toBeVisible();
   await edit(page, 'NAME', '複製'); await edit(page, 'CSTR:0', '複製の文字');
-  await expect(page.getByRole('button', { name: '변수 추가', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '변수 추가', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '배열 크기 변경', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: /#1 · NO 8/ }).click();
   await page.getByRole('button', { name: '캐릭터 삭제', exact: true }).click();

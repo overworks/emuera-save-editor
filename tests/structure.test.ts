@@ -114,7 +114,7 @@ describe('binary variable structure', () => {
     expect(originalValue(check.variables.find(v => v.name === last.name && v.scope === last.scope)!, key)).toBe(last.kind === 'string' ? '変化😀' : 999n);
     e.reset(); expect(e.serialize()).toEqual(fixture('normal-binary'));
   });
-  it('rejects invalid structure atomically and keeps text structure read-only', () => {
+  it('rejects invalid structure atomically and keeps fixed text base variables in place', () => {
     const e = open();
     const bad: NewVariable[] = [
       { ...spec, name: '' }, { ...spec, name: '1ABC' }, { ...spec, name: 'A:B' }, { ...spec, name: 'A'.repeat(129) },
@@ -127,7 +127,7 @@ describe('binary variable structure', () => {
     for (const value of bad) expect(() => e.addVariable(value)).toThrow();
     expect(e.summary().changes).toBe(0); expect(e.serialize()).toEqual(fixture('normal-binary'));
     const text = open('normal-text');
-    for (const mutate of [() => text.addVariable(spec), () => text.deleteVariable(0), () => text.restoreVariable(0)]) expect(mutate).toThrow('error.structureBinary');
+    for (const mutate of [() => text.deleteVariable(0), () => text.restoreVariable(0)]) expect(mutate).toThrow('error.textBaseVariable');
     expect(text.serialize()).toEqual(fixture('normal-text'));
   });
 });

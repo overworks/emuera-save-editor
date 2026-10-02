@@ -76,6 +76,32 @@ describe('local recovery journal', () => {
     expect(r.operations).toHaveLength(1);
   });
 
+  for (const encoding of ['auto', 'shift_jis'] as const) it(`replays ${encoding} text record additions, hidden deletions and independent copies`, () => {
+    const s = open(textCharacterFixture({ encoding: encoding === 'auto' ? 'utf-8' : encoding, newline: 'mixed', trailingNewline: false }), encoding);
+    const nickname = id(s, 0, 'NICKNAME');
+    s.run({ type: 'set', id: nickname, key: '', value: '保存:別名' });
+    s.run({ type: 'deleteVariable', id: nickname });
+    const added = s.run({ type: 'addVariable', variable: { scope: 0, name: 'NEW', kind: 'int', dimensions: [2, 2], section: 'builtin' } }).id!;
+    s.run({ type: 'set', id: added, key: '1,1', value: String(MIN_INT) });
+    const copy = s.run({ type: 'cloneCharacter', scope: 0 }).scope!;
+    const copyAdded = s.run({ type: 'addVariable', variable: { scope: copy, name: 'MEMO', kind: 'string', dimensions: [] } }).id!;
+    s.run({ type: 'set', id: copyAdded, key: '', value: '複製' });
+    s.run({ type: 'set', id: added, key: '1,1', value: String(MAX_INT) });
+    s.run({ type: 'deleteCharacter', scope: 0 });
+    const count = s.operations.length;
+    expect(() => s.run({ type: 'deleteVariable', id: id(s, -1, 'DAY') })).toThrow('error.textBaseVariable');
+    expect(s.operations).toHaveLength(count);
+    const r = restore(restore(s));
+    expect(r.editor.summary()).toEqual(s.editor.summary());
+    expect(r.editor.serialize()).toEqual(s.editor.serialize());
+    expect(row(r, copy, 'NEW:1:1')).toMatchObject({ value: String(MIN_INT) });
+    r.run({ type: 'restoreCharacter', scope: 0 }); r.run({ type: 'restoreVariable', id: nickname });
+    expect(row(r, 0, 'NICKNAME')).toMatchObject({ value: '保存:別名' });
+    expect(row(r, 0, 'NEW:1:1')).toMatchObject({ value: String(MAX_INT) });
+    r.run({ type: 'deleteCharacter', scope: copy }); r.run({ type: 'deleteVariable', id: added }); r.run({ type: 'revert', id: nickname, key: '' });
+    expect(restore(r).editor.serialize()).toEqual(s.source.bytes);
+  });
+
   it('keeps stable IDs after canceled additions and copies, resets, reverts and repeated recovery', () => {
     const s = open(), variable = { scope: -1, name: 'EXTRA', kind: 'int' as const, dimensions: [1] };
     const first = s.run({ type: 'addVariable', variable }).id!;

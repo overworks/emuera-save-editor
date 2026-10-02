@@ -5,6 +5,7 @@ import type { NewVariable } from '../src/core/editor';
 import { coordinates, cellCount } from '../src/core/model';
 import type { TextEncoding } from '../src/core/model';
 import { buildOracle, runOracle } from './oracle';
+import { checkTextVariables } from './reference-text-variables';
 
 buildOracle();
 mkdirSync('.reference/edited', { recursive: true });
@@ -253,3 +254,5 @@ checkCharacters('reference-to-copy', characterExpected([source(0), source(2), so
 characterEditor.deleteCharacter(referencedCopy);
 checkCharacters('cancel-referenced-copy', characterExpected([source(0), source(2)], { TARGET: '-1', ASSI: '-1', PLAYER: '1' }));
 characterEditor.reset(); assert.deepEqual(characterEditor.serialize(), characterBytes);
+
+checkTextVariables();

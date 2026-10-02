@@ -1,10 +1,10 @@
 import { MAGIC, parseBinary, writeVariable } from './binary';
-import { parseText, FINISH, SEPARATOR } from './text';
+import { parseText, writeTextVariable, FINISH, SEPARATOR } from './text';
 import { encodeText } from './encoding';
 import { Labels, characterLabel } from './labels';
 import type { CharacterField, CharacterLabels } from './labels';
 import { MAX_ARRAY_CELLS, MAX_FILE_BYTES, MAX_STORED_CELLS, MAX_TEXT_LINES, SaveError, cellCount, coordinates, integer, ordinal, originalValue, patchBytes } from './model';
-import type { BinarySection, EncodingOption, SaveDocument, Scalar, Variable } from './model';
+import type { BinarySection, EncodingOption, SaveDocument, Scalar, TextEncoding, TextSection, TextVariableGroup, TextVariableType, Variable } from './model';
 
 export function parseSave(bytes: Uint8Array, filename: string, encoding: EncodingOption = 'auto'): SaveDocument {
   if (!bytes.length) throw new SaveError('error.emptyFile');
@@ -26,7 +26,7 @@ export interface ReferenceChange { name: string; before: string; after: string }
 export interface NewVariable { scope: number; name: string; kind: 'int' | 'string'; dimensions: number[]; section?: BinarySection }
 export interface VariableSummary {
   id: number; scope: number; name: string; kind: 'int' | 'string'; count: number; dimensions: number[]; originalDimensions: number[];
-  added: boolean; deleted: boolean; section?: BinarySection;
+  added: boolean; deleted: boolean; section?: BinarySection; textSection?: TextSection;
 }
 export interface Query {
   scope: number | 'all'; variableId?: number; search: string; changedOnly: boolean; page: number;
@@ -39,13 +39,14 @@ export interface Summary {
   fileType: 'normal' | 'global'; gameCode: string; gameVersion: string; description: string;
   characters: CharacterSummary[];
   variables: VariableSummary[];
+  textVariableTypes?: { shared: TextVariableType[]; character: TextVariableType[] };
   changes: number; valueChanges: number; resizedArrays: number; addedVariables: number; deletedVariables: number;
   addedCharacters: number; deletedCharacters: number;
   labels: number; characterLabels: number; renames: number;
 }
 const PAGE_SIZE = 50;
 const CHARACTER_REFERENCES = new Set(['TARGET', 'ASSI', 'MASTER', 'PLAYER']);
-interface CharacterCopy { bytes: Uint8Array; separator?: number; textBaseEnd?: number; variables: Variable[] }
+interface CharacterCopy { bytes: Uint8Array; separator?: number; textBaseEnd?: number; textGroups?: TextVariableGroup[]; variables: Variable[] }
 export class Editor {
   readonly edits = new Map<number, Map<string, Scalar>>();
   private readonly resizes = new Map<number, number[]>();
@@ -147,7 +148,8 @@ export class Editor {
     for (const v of copies) this.copiedVariables.set(v.id, v);
     const separator = layout?.characterSeparators[index];
     this.copies.set(nextScope, { bytes: concat([bytes.subarray(base.start, base.end), ...(extended ? [bytes.subarray(extended.start, extended.end)] : [])]),
-      separator: separator === undefined ? undefined : separator - base.start, textBaseEnd: textLayout ? baseLength : undefined, variables: copies });
+      separator: separator === undefined ? undefined : separator - base.start, textBaseEnd: textLayout ? baseLength : undefined,
+      textGroups: textLayout?.groups.filter(g => g.scope === index).map(g => ({ ...g, scope: nextScope, end: g.end + baseLength - extended!.start })), variables: copies });
     this.reindexCharacters(); this.refreshCharacters();
     return nextScope;
   }
@@ -181,17 +183,17 @@ export class Editor {
       || !Number.isSafeInteger(cellCount(dimensions)) || cellCount(dimensions) > MAX_ARRAY_CELLS) throw new SaveError('error.resizeSize');
   }
   addVariable(spec: NewVariable): number {
-    const layout = this.requireBinary();
     if (!Number.isInteger(spec.scope) || spec.scope < -1 || (spec.scope >= 0 && !this.characterIndices.has(spec.scope))) throw new SaveError('error.variableScope');
     if (!/^[\p{L}_][\p{L}\p{M}\p{N}_]*$/u.test(spec.name) || spec.name.length > 128) throw new SaveError('error.newVariableName');
     if (spec.kind !== 'int' && spec.kind !== 'string') throw new SaveError('error.variableKind');
-    const section = spec.scope >= 0 ? spec.section ?? 'user' : undefined;
-    if ((spec.scope === -1 && spec.section !== undefined) || (section !== undefined && section !== 'builtin' && section !== 'user')) throw new SaveError('error.variableSection');
-    if (spec.dimensions.length > (spec.scope >= 0 ? 2 : 3) || (section === 'user' && !spec.dimensions.length)) throw new SaveError('error.newVariableRank');
-    this.validateDimensions(spec.dimensions);
     const variables = this.variables();
     if (variables.some(v => v.scope === spec.scope && v.name.toUpperCase() === spec.name.toUpperCase())) throw new SaveError('error.variableNameUsed', undefined, 'byte', { name: spec.name });
     if (variables.length >= 200_000) throw new SaveError('error.variableCount');
+    if (this.document.format === 'text') return this.addTextVariable(spec, variables);
+    const layout = this.requireBinary(), section = spec.scope >= 0 ? spec.section ?? 'user' : undefined;
+    if ((spec.scope === -1 && spec.section !== undefined) || (section !== undefined && section !== 'builtin' && section !== 'user')) throw new SaveError('error.variableSection');
+    if (spec.dimensions.length > (spec.scope >= 0 ? 2 : 3) || (section === 'user' && !spec.dimensions.length)) throw new SaveError('error.newVariableRank');
+    this.validateDimensions(spec.dimensions);
     const copy = this.copies.get(spec.scope), end = copy ? copy.bytes.length - 1 : layout.characterEnds[spec.scope];
     const separator = copy ? copy.separator : layout.characterSeparators[spec.scope];
     const start = spec.scope === -1 ? layout.eof : section === 'builtin' ? separator ?? end : end;
@@ -202,15 +204,40 @@ export class Editor {
     this.refreshCharacters();
     return id;
   }
+  private addTextVariable(spec: NewVariable, variables: Variable[]): number {
+    const groups = this.copies.get(spec.scope)?.textGroups ?? this.document.textLayout!.groups;
+    const section = spec.section ?? (spec.scope >= 0 || !spec.dimensions.length || this.document.formatVersion < 1808 ? 'builtin' : 'user');
+    const group = groups.find(g => g.scope === spec.scope && g.section === section && g.kind === spec.kind && g.rank === spec.dimensions.length);
+    if (!group || (spec.kind === 'string' && spec.dimensions.length > 1)) throw new SaveError('error.textVariableType');
+    if (spec.name === FINISH || spec.name === SEPARATOR || spec.name.startsWith('__EMUERA_')) throw new SaveError('error.textReserved');
+    encodeText(spec.name, this.document.encoding as TextEncoding);
+    this.validateDimensions(spec.dimensions);
+    // Empty multidimensional text records carry no per-axis sizes; only all-zero
+    // dimensions survive reparsing. Nonempty new records store every cell explicitly.
+    if (spec.dimensions.some(n => n === 0) && spec.dimensions.some(n => n !== 0)) throw new SaveError('error.textEmptyDimensions');
+    if (variables.reduce((n, v) => n + v.textSpans!.size, cellCount(spec.dimensions)) > MAX_STORED_CELLS) throw new SaveError('error.storedCells');
+    const id = this.nextId, v: Variable = { ...spec, dimensions: [...spec.dimensions], id, section, textSection: 'extended',
+      values: new Map(), start: group.end, end: group.end, textNewline: group.newline };
+    v.textSpans = writeTextVariable(v, new Map(), this.document.encoding as TextEncoding, true).spans;
+    // Validate the proposed complete export before committing it to the editor or
+    // recovery journal. Failed additions leave live edits and IDs unchanged.
+    this.added.set(id, v);
+    try { this.serialize(); } catch (error) { this.added.delete(id); throw error; }
+    this.nextId++; this.refreshCharacters();
+    return id;
+  }
+  private requireVariableStructure(v: Variable) {
+    if (this.document.format === 'text' && v.textSection !== 'extended') throw new SaveError('error.textBaseVariable');
+  }
   deleteVariable(id: number) {
-    this.requireBinary(); this.variable(id);
+    this.requireVariableStructure(this.variable(id));
     if (this.added.delete(id)) { this.edits.delete(id); this.resizes.delete(id); this.referenceTargets.delete(id); this.referenceEdits.delete(id); }
     else this.deleted.add(id);
     this.refreshCharacters();
   }
   restoreVariable(id: number) {
-    this.requireBinary();
     const v = this.variable(id, true);
+    this.requireVariableStructure(v);
     if (!this.deleted.has(id)) return;
     if ([...this.added.values()].some(a => a.scope === v.scope && a.name.toUpperCase() === v.name.toUpperCase())) throw new SaveError('error.variableNameUsed', undefined, 'byte', { name: v.name });
     if (this.variables().length >= 200_000) throw new SaveError('error.variableCount');
@@ -309,9 +336,13 @@ export class Editor {
     return { filename: d.filename, bytes: d.original.length, format: d.format, encoding: d.encoding, formatVersion: d.formatVersion,
       fileType: d.fileType, gameCode: String(d.gameCode), gameVersion: String(d.gameVersion), description: d.description,
       characters: this.characterSummaries(),
-      variables: this.variables(true).map(v => ({ id: v.id, scope: v.scope, name: v.name, kind: v.kind, section: v.section,
+      variables: this.variables(true).map(v => ({ id: v.id, scope: v.scope, name: v.name, kind: v.kind, section: v.section, textSection: v.textSection,
         added: this.added.has(v.id), deleted: this.deleted.has(v.id), dimensions: this.dimensions(v), originalDimensions: v.dimensions,
         count: v.textSpans ? v.textSpans.size : cellCount(this.dimensions(v)) })),
+      textVariableTypes: d.textLayout && {
+        shared: d.textLayout.groups.filter(g => g.scope === -1 && (g.kind === 'int' || g.rank <= 1)).map(({ section, kind, rank }) => ({ section, kind, rank })),
+        character: d.textLayout.groups.filter(g => g.scope === 0 && (g.kind === 'int' || g.rank <= 1)).map(({ section, kind, rank }) => ({ section, kind, rank })),
+      },
       changes: valueChanges + resizedArrays + addedVariables + deletedVariables + this.copies.size + this.deletedCharacters.size, valueChanges, resizedArrays,
       addedVariables, deletedVariables, addedCharacters: this.copies.size, deletedCharacters: this.deletedCharacters.size,
       labels: this.labels.count, characterLabels: this.labels.characters.size, renames: this.labels.renames.size };
@@ -411,10 +442,11 @@ export class Editor {
       const insertions = new Map<number, Uint8Array[]>(), separated = new Set<number>();
       for (const v of additions) {
         const chunks = insertions.get(v.start) ?? [];
-        if (v.section === 'user' && separators(v.scope) === undefined && !separated.has(v.scope)) {
+        if (this.document.format === 'binary' && v.section === 'user' && separators(v.scope) === undefined && !separated.has(v.scope)) {
           chunks.push(new Uint8Array([0xfd])); separated.add(v.scope);
         }
-        chunks.push(writeVariable({ ...v, dimensions: this.dimensions(v) }, this.activeEdits(v)));
+        chunks.push(this.document.format === 'text' ? writeTextVariable(v, this.activeEdits(v), this.document.encoding as TextEncoding).bytes
+          : writeVariable({ ...v, dimensions: this.dimensions(v) }, this.activeEdits(v)));
         insertions.set(v.start, chunks);
       }
       for (const [start, chunks] of insertions) changesToBytes.push({ start, end: start, bytes: concat(chunks) });
@@ -443,9 +475,10 @@ export class Editor {
         const start = section === 'base' ? textLayout.sharedStart : textLayout.extendedSharedStart;
         if (start === undefined || !this.copies.size) continue;
         const chunks: Uint8Array[] = [];
-        for (const copy of this.copies.values()) {
+        for (const [scope, copy] of this.copies) {
           const from = section === 'base' ? 0 : copy.textBaseEnd!, to = section === 'base' ? copy.textBaseEnd! : copy.bytes.length;
-          const changes = recordPatches(copy.variables.filter(v => v.textSection === section), [], () => undefined)
+          const changes = recordPatches(copy.variables.filter(v => v.textSection === section),
+            (copyAdditions.get(scope) ?? []).filter(v => v.textSection === section), () => undefined)
             .map(p => ({ ...p, start: p.start - from, end: p.end - from }));
           chunks.push(patchBytes(copy.bytes.subarray(from, to), changes, true));
         }

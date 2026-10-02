@@ -268,7 +268,8 @@ export function App() {
           }} />
           <div className="filters"><div className="search"><Search size={17} /><input aria-label={t('search')} placeholder={t('searchPlaceholder')} value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />{search && <button aria-label={t('clearSearch')} onClick={() => { setSearch(''); setPage(0); }}><X size={14} /></button>}</div><div className="variable-filter"><ListFilter size={16} /><select aria-label={t('variableGroup')} value={variableId ?? ''} onChange={e => { setVariableId(e.target.value === '' ? undefined : Number(e.target.value)); setPage(0); }}><option value="">{t('allGroups')}</option>{selectedVariables.map(v => <option value={v.id} key={v.id}>{v.name}{scope === 'all' && v.scope >= 0 ? ` · #${charactersByScope.get(v.scope)?.index}` : ''} ({number(v.count)})</option>)}</select></div></div>
           {results.expandedSearch !== undefined && <p className="search-expansion">{t('searchExpanded')} <code>{results.expandedSearch || t('emptyString')}</code></p>}
-          {summary.format === 'binary' && <div className="variable-toolbar"><button className="button secondary small" onClick={() => setAdding(true)} disabled={!!busy}>{t('addVariable')}</button>{selectedVariable && !selectedVariable.deleted && <button className="button secondary small" onClick={() => setDeleting(selectedVariable)} disabled={!!busy || querying}>{t('deleteVariable')}</button>}</div>}
+          {(summary.format === 'binary' || !!summary.formatVersion) && <div className="variable-toolbar"><button className="button secondary small" onClick={() => setAdding(true)} disabled={!!busy}>{t('addVariable')}</button>{selectedVariable && !selectedVariable.deleted && selectedVariable.textSection !== 'base' && <button className="button secondary small" onClick={() => setDeleting(selectedVariable)} disabled={!!busy || querying}>{t('deleteVariable')}</button>}</div>}
+          {selectedVariable?.textSection === 'base' && <p className="input-hint">{t('textBaseVariableHint')}</p>}
           {summary.format === 'binary' && !selectedVariable?.deleted && !!selectedVariable?.dimensions.length && <div className="array-toolbar"><span>{t('arraySize')} <code>{selectedVariable.dimensions.join(' × ')}</code></span><button className="button secondary small" onClick={() => setResizing(selectedVariable)} disabled={!!busy || querying}>{t('resizeArray')}</button></div>}
           <div className="data-table-wrap" aria-busy={querying}><table className="data-table"><thead><tr><th>{t('variableIndex')}</th><th>{t('label')}</th><th>{changedOnly ? t('beforeAfter') : t('currentValue')}</th><th><span className="visually-hidden">{t('edit')}</span></th></tr></thead><tbody>
             {results.rows.map(row => 'character' in row ? <tr key={`${row.type}:${row.character.scope}`} className="modified">
@@ -358,23 +359,28 @@ function AddVariableDialog({ summary, initialScope, onClose, onSave }: { summary
   const [section, setSection] = useState<'builtin' | 'user'>('user');
   const [desiredRank, setRank] = useState(1), [lengths, setLengths] = useState(['1', '1', '1']);
   const [pending, setPending] = useState(false), [error, setError] = useState<Message>();
-  const minRank = scope >= 0 && section === 'user' ? 1 : 0, maxRank = scope >= 0 ? 2 : 3;
-  const rank = Math.max(minRank, Math.min(maxRank, desiredRank));
+  const textTypes = summary.textVariableTypes?.[scope < 0 ? 'shared' : 'character'];
+  const sections = textTypes ? [...new Set(textTypes.map(type => type.section))] : ['user', 'builtin'] as const;
+  const selectedSection = sections.includes(section) ? section : sections[0];
+  const minRank = scope >= 0 && selectedSection === 'user' ? 1 : 0, maxRank = scope >= 0 ? 2 : 3;
+  const ranks = textTypes ? textTypes.filter(type => type.section === selectedSection && type.kind === kind).map(type => type.rank)
+    : Array.from({ length: maxRank - minRank + 1 }, (_, i) => i + minRank);
+  const rank = ranks.includes(desiredRank) ? desiredRank : ranks[0];
   return <Modal title={t('addVariable')} onClose={() => { if (!pending) onClose(); }}><form onSubmit={async e => {
     e.preventDefault(); setPending(true); setError(undefined);
     try {
       if (lengths.slice(0, rank).some(n => !/^\d+$/.test(n.trim()))) throw new SaveError('error.resizeSize');
-      await onSave({ scope, name, kind, dimensions: lengths.slice(0, rank).map(Number), section: scope >= 0 ? section : undefined });
+      await onSave({ scope, name, kind, dimensions: lengths.slice(0, rank).map(Number), section: textTypes || scope >= 0 ? selectedSection : undefined });
     } catch (e) { setError(messageOf(e)); setPending(false); }
   }}>
     <fieldset className="variable-form" disabled={pending}>
       <label>{t('variableName')}<input className="edit-input" value={name} onChange={e => setName(e.target.value)} autoComplete="off" data-initial-focus /></label>
       <label>{t('variableScope')}<select className="edit-input" value={scope} onChange={e => setScope(Number(e.target.value))}><option value={-1}>{t(summary.fileType === 'global' ? 'globalVariables' : 'sharedVariables')}</option>{summary.characters.filter(c => !c.deleted).map(c => <option key={c.scope} value={c.scope}>#{c.index} · {c.name || t('character', { index: String(c.index) })}</option>)}</select></label>
-      {scope >= 0 && <label>{t('variableSection')}<select className="edit-input" value={section} onChange={e => setSection(e.target.value as 'builtin' | 'user')}><option value="user">{t('userVariable')}</option><option value="builtin">{t('builtinVariable')}</option></select></label>}
-      <div className="resize-dimensions"><label>{t('variableKind')}<select className="edit-input" value={kind} onChange={e => setKind(e.target.value as 'int' | 'string')}><option value="int">{t('integerType')}</option><option value="string">{t('stringType')}</option></select></label><label>{t('variableRank')}<select className="edit-input" value={rank} onChange={e => setRank(Number(e.target.value))}>{Array.from({ length: maxRank - minRank + 1 }, (_, i) => i + minRank).map(n => <option key={n} value={n}>{n || t('scalar')}</option>)}</select></label></div>
+      {(textTypes || scope >= 0) && <label>{t(textTypes ? 'textVariableSection' : 'variableSection')}<select className="edit-input" value={selectedSection} onChange={e => setSection(e.target.value as 'builtin' | 'user')}>{sections.map(value => <option key={value} value={value}>{t(value === 'user' ? 'userVariable' : 'builtinVariable')}</option>)}</select></label>}
+      <div className="resize-dimensions"><label>{t('variableKind')}<select className="edit-input" value={kind} onChange={e => setKind(e.target.value as 'int' | 'string')}><option value="int">{t('integerType')}</option><option value="string">{t('stringType')}</option></select></label><label>{t('variableRank')}<select className="edit-input" value={rank} onChange={e => setRank(Number(e.target.value))}>{ranks.map(n => <option key={n} value={n}>{n || t('scalar')}</option>)}</select></label></div>
       {!!rank && <div className="resize-dimensions">{lengths.slice(0, rank).map((length, axis) => <label key={axis}>{t('dimensionSize', { axis: axis + 1 })}<input className="edit-input mono" value={length} inputMode="numeric" onChange={e => setLengths(values => values.map((n, i) => i === axis ? e.target.value : n))} /></label>)}</div>}
     </fieldset>
-    <p className="input-hint">{t('newVariableHint')}</p>{!!rank && <p className="input-hint">{t('resizeHint')}</p>}
+    <p className="input-hint">{t('newVariableHint')}</p>{!!rank && <p className="input-hint">{t(textTypes ? 'textVariableSizeHint' : 'resizeHint')}</p>}
     {error && <p className="field-error" role="alert">{message(error)}</p>}
     <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose} disabled={pending}>{t('cancel')}</button><button type="submit" className="button primary" disabled={pending}>{t('addVariable')}</button></div>
   </form></Modal>;

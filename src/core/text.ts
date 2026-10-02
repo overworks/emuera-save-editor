@@ -1,7 +1,7 @@
 import type { ErrorKey, MessageParams } from './diagnostic';
-import { decodeText, detectEncoding } from './encoding';
-import { MAX_STORED_CELLS, MAX_TEXT_LINES, SaveError, integer } from './model';
-import type { EncodingOption, SaveDocument, Span, TextEncoding, Variable } from './model';
+import { decodeText, detectEncoding, encodeText } from './encoding';
+import { MAX_FILE_BYTES, MAX_STORED_CELLS, MAX_TEXT_LINES, SaveError, cellCount, integer, originalValue } from './model';
+import type { BinarySection, EncodingOption, SaveDocument, Scalar, Span, TextEncoding, Variable } from './model';
 
 export const FINISH = '__FINISHED';
 export const SEPARATOR = '__EMU_SEPARATOR__';
@@ -40,7 +40,7 @@ export function parseText(bytes: Uint8Array, filename: string, option: EncodingO
   function parse(fileType: 'normal' | 'global'): SaveDocument {
     let cursor = 0, storedCells = 0;
     let textSection: 'base' | 'extended' = 'base';
-    const layout: NonNullable<SaveDocument['textLayout']> = { characters: [], sharedStart: 0, lines: source.length };
+    const layout: NonNullable<SaveDocument['textLayout']> = { characters: [], sharedStart: 0, lines: source.length, groups: [] };
     const variables: Variable[] = [];
     const names = new Set<string>();
     const fail = (key: ErrorKey, params: MessageParams = {}): never => { throw new SaveError(key, cursor + 1, 'line', params); };
@@ -92,7 +92,16 @@ export function parseText(bytes: Uint8Array, filename: string, option: EncodingO
       }
       v.end = take().end;
     }
-    function sections(scope: number, maxRank: number, scalar: boolean) {
+    function sections(scope: number, maxRank: number, scalar: boolean, section: BinarySection = 'builtin') {
+      const finishGroup = (kind: 'int' | 'string', rank: number) => {
+        const separator = take();
+        let newline = '';
+        for (let i = cursor - 1; i >= 0 && !newline; i--) {
+          const end = source[i].end, after = source[i + 1]?.start ?? bytes.length;
+          if (after > end) newline = decodeText(bytes.subarray(end, after), encoding);
+        }
+        layout.groups.push({ scope, section, kind, rank, end: separator.start, newline: newline || '\n' });
+      };
       if (scalar) for (const kind of ['string', 'int'] as const) {
         while (peek() !== SEPARATOR) {
           const line = take();
@@ -103,16 +112,17 @@ export function parseText(bytes: Uint8Array, filename: string, option: EncodingO
           const v = variable(name, scope, kind, 0);
           v.start = line.start;
           cell(v, [], { start: line.start + colon + 1, end: line.end, bytes: valueBytes, text: decodeText(valueBytes, encoding) });
+          v.section = section; v.end = boundary();
         }
-        take();
+        finishGroup(kind, 0);
       }
       for (let rank = 1; rank <= maxRank; rank++) for (const kind of ['string', 'int'] as const) {
         while (peek() !== SEPARATOR) {
           if (kind === 'string' && rank > 1) fail('error.textStringRank');
-          const name = take().text;
-          array(variable(name, scope, kind, rank));
+          const line = take(), v = variable(line.text, scope, kind, rank);
+          array(v); v.start = line.start; v.end = boundary(); v.section = section;
         }
-        take();
+        finishGroup(kind, rank);
       }
     }
     const gameCode = number(take()), gameVersion = number(take());
@@ -154,11 +164,11 @@ export function parseText(bytes: Uint8Array, filename: string, option: EncodingO
         }
         layout.extendedSharedStart = boundary();
         sections(-1, maxRank, true);
-        if (formatVersion >= 1808) sections(-1, 3, false);
+        if (formatVersion >= 1808) sections(-1, 3, false, 'user');
       } else {
         layout.extendedSharedStart = boundary();
         if (formatVersion !== 1808) fail('error.globalExtension');
-        sections(-1, 3, false);
+        sections(-1, 3, false, 'user');
       }
     }
     if (cursor !== source.length) fail('error.trailingText');
@@ -171,4 +181,46 @@ export function parseText(bytes: Uint8Array, filename: string, option: EncodingO
     try { return parse(hint === 'normal' ? 'global' : 'normal'); }
     catch { throw firstError; }
   }
+}
+
+// New text records contain explicit cells at the requested size. Existing ragged
+// records still use their original spans; this writer never fills their gaps.
+export function writeTextVariable(v: Variable, changes: Map<string, Scalar>, encoding: TextEncoding, captureSpans = false) {
+  const count = cellCount(v.dimensions), rank = v.dimensions.length, newline = v.textNewline!;
+  if (count > MAX_STORED_CELLS) throw new SaveError('error.storedCells');
+  const lines = !rank ? 1 : 2 + (!count ? 0 : rank === 1 ? count : rank === 2 ? v.dimensions[0] : v.dimensions[0] * (v.dimensions[1] + 2));
+  if (lines > MAX_TEXT_LINES) throw new SaveError('error.textLines');
+  const text: string[] = [], spans = new Map<string, Span>();
+  let bytes = 0, lineCount = 0;
+  const append = (value: string, key?: string) => {
+    const length = /^[\x00-\x7f]*$/.test(value) ? value.length : encodeText(value, encoding).length;
+    if (bytes + length > MAX_FILE_BYTES) throw new SaveError('error.exportSize');
+    if (captureSpans && key !== undefined) spans.set(key, { start: bytes, end: bytes + length });
+    text.push(value); bytes += length;
+  };
+  const endLine = () => {
+    if (++lineCount > MAX_TEXT_LINES) throw new SaveError('error.textLines');
+    append(newline);
+  };
+  const cell = (key: string) => append(String(changes.get(key) ?? originalValue(v, key)), key);
+  if (!rank) { append(v.name + ':'); cell(''); endLine(); }
+  else {
+    append(v.name); endLine();
+    if (count) {
+      if (rank === 1) for (let x = 0; x < v.dimensions[0]; x++) { cell(String(x)); endLine(); }
+      else if (rank === 2) for (let x = 0; x < v.dimensions[0]; x++) {
+        for (let y = 0; y < v.dimensions[1]; y++) { if (y) append(','); cell(`${x},${y}`); }
+        endLine();
+      } else for (let x = 0; x < v.dimensions[0]; x++) {
+        append(`${x}{`); endLine();
+        for (let y = 0; y < v.dimensions[1]; y++) {
+          for (let z = 0; z < v.dimensions[2]; z++) { if (z) append(','); cell(`${x},${y},${z}`); }
+          endLine();
+        }
+        append('}'); endLine();
+      }
+    }
+    append(FINISH); endLine();
+  }
+  return { bytes: encodeText(text.join(''), encoding), spans };
 }

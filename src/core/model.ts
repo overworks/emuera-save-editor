@@ -8,6 +8,8 @@ export type BinarySection = 'builtin' | 'user';
 export type TextSection = 'base' | 'extended';
 export interface Span { start: number; end: number }
 export interface TextCharacterLayout { base: Span; extended?: Span; lines: number }
+export interface TextVariableType { section: BinarySection; kind: 'int' | 'string'; rank: number }
+export interface TextVariableGroup extends TextVariableType { scope: number; end: number; newline: string }
 export interface Variable extends Span {
   id: number;
   scope: number; // -1: shared/global; otherwise stable character ID (original position), never NO.
@@ -17,7 +19,8 @@ export interface Variable extends Span {
   values: Map<string, Scalar>;
   textSpans?: Map<string, Span>;
   textSection?: TextSection;
-  section?: BinarySection; // Character binary records before/after the 0xfd separator.
+  section?: BinarySection; // Binary character sections, or named text extension groups.
+  textNewline?: string; // Line ending used for a newly added text record.
 }
 export interface SaveDocument {
   original: Uint8Array;
@@ -32,7 +35,7 @@ export interface SaveDocument {
   characterCount: number;
   variables: Variable[];
   binaryLayout?: { characterCountOffset?: number; characterStarts: number[]; characterEnds: number[]; characterSeparators: (number | undefined)[]; sharedStart: number; eof: number };
-  textLayout?: { characterCount?: Span; characters: TextCharacterLayout[]; sharedStart: number; extendedSharedStart?: number; lines: number };
+  textLayout?: { characterCount?: Span; characters: TextCharacterLayout[]; sharedStart: number; extendedSharedStart?: number; lines: number; groups: TextVariableGroup[] };
 }
 export class SaveError extends MessageError {
   constructor(key: ErrorKey, position?: number, unit: 'byte' | 'line' = 'byte', params: MessageParams = {}) {

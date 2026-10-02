@@ -1,6 +1,6 @@
 # Text character operations
 
-Normal text saves support character duplication and deletion with the same stable identities, snapshot semantics, restoration, and standard reference policy as [binary character operations](binary-characters.md). The UI and Worker use the same character commands. Global saves and creation without a source character remain excluded; individual text variable addition/deletion and text array resizing are separate, unsupported operations. See the [user guide](../README.md#duplicating-and-deleting-characters).
+Normal text saves support character duplication and deletion with the same stable identities, snapshot semantics, restoration, and standard reference policy as [binary character operations](binary-characters.md). The UI and Worker use the same character commands. Global saves and creation without a source character remain excluded; [named text extension variable addition/deletion](text-variables.md) is supported separately, while text array resizing remains unsupported. See the [user guide](../README.md#duplicating-and-deleting-characters).
 
 ## Source evidence
 
@@ -19,7 +19,7 @@ These operations change stored records and do not run character initialization o
 
 A copy snapshots the validated current export using the document's selected encoding, even if those bytes would also pass UTF-8 detection. It retains both character blocks, empty extension sections, NAME, NO, all stored values, ragged rows, and omitted cells. Its variables and every `textSpans` entry are relocated into the copy's own byte buffer. Further edits to the source or copy remain independent. Copying a copy and cancelling its source work the same way.
 
-Deleting an original omits both spans and hides its edits until restored. Copies are appended at the end of the active character order in both passes. Text variable membership and array shapes are otherwise unchanged. An export is reparsed and checked for format/version, encoding, headers, count, variable order, scopes, sections, dimensions, stored-cell membership, and all logical values.
+Deleting an original omits both spans and hides its edits until restored. Copies are appended at the end of the active character order in both passes. Copies include current text extension additions/deletions and relocate their insertion groups; existing array shapes and ragged cells remain unchanged. An export is reparsed and checked for format/version, encoding, headers, count, variable order, scopes, sections, dimensions, stored-cell membership, and all logical values.
 
 ## References and byte preservation
 
