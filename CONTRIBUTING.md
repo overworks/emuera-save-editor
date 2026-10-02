@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion, text/binary character duplication/deletion and reference previews, undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, and mobile dialog behavior.
+Playwright serves the built `dist/` directory, so rebuild after changing source files. Its configured preview URL is `http://127.0.0.1:4173`. The suite covers file editing and reopening, binary array resizing, variable addition/deletion, text/binary character duplication/deletion and reference previews, undo, CSV labels and character metadata, search substitutions, encoding selection, offline operation, invalid inputs, mobile dialog behavior, and opt-in local recovery across reloads, storage errors and multiple tabs.
 
 For parser, serializer, or encoding changes, also use the independent reference engine check with the .NET 8 SDK installed:
 
@@ -65,7 +65,8 @@ For documentation-only changes, check relative links, commands against `package.
 
 - Keep format parsing, serialization, encoding, and editing logic in `src/core/`, independent of React and the DOM. Keep file processing in the Worker and use the typed messages in `src/worker.ts` through `src/client.ts`.
 - Preserve exact signed 64-bit values, original bytes outside edited regions, sparse array handling, and validation before export. Follow the detailed invariants in [AGENTS.md](AGENTS.md).
-- Keep user files in browser memory. Maintain the static, browser-only architecture without adding upload services, external runtime assets, analytics, or persistent session storage as incidental dependencies.
+- Keep user files in browser memory unless the user enables local session recovery. Maintain the static, browser-only architecture without adding upload services, external runtime assets, analytics, or incidental persistence. IndexedDB recovery must remain optional and off by default; do not store files or preferences elsewhere.
+- Recovery changes need journal tests and browser checks for restoration, exact reset, disabled-by-default behavior, deletion, failed opens, quotas, unsupported records and stale-tab conflicts. Keep the original file and validated operations separate from exported bytes, and never replace undo history with an edited save. Wait for transaction completion before displaying success; keep live edits usable if storage fails.
 - Follow the surrounding TypeScript style: strict types, two-space indentation, single quotes, and semicolons. Prefer existing abstractions and dependencies where they fit the change.
 - Preserve keyboard navigation, accessible control names, dialog focus, error feedback, and narrow-screen usability. The product UI supports English, Korean, and Japanese; verify translated text at narrow widths too.
 - Add regression coverage for meaningful behavior changes, especially save-format fixes. Use small synthetic examples instead of committing a user's save or game assets. Keep reference comparisons independent of the TypeScript serializer.

@@ -71,7 +71,7 @@ Choose **Game preset** in the editor for localized names, explanations, and shor
 
 Expand **Frequently used fields** and select a character to enable their shortcuts; shared funds can be opened directly where included. Shortcuts open an existing field, and preset names and explanations are searchable in the current interface language within the selected scope and variable group. Missing or incompatible fields are unavailable. CSV labels remain primary, with preset guidance displayed separately.
 
-Selecting or switching presets leaves save values and edits intact. The selection stays in memory, survives a language change or failed file open, and clears when another save opens successfully. Presets work offline after the app loads. They provide a small set of field guides, not complete game data or automatic value changes. See [preset mappings, source editions, and verification limits](docs/game-presets.md).
+Selecting or switching presets leaves save values and edits intact. The selection survives a language change or failed file open and clears when another save opens successfully. It is also restored when local session recovery is enabled. Presets work offline after the app loads. They provide a small set of field guides, not complete game data or automatic value changes. See [preset mappings, source editions, and verification limits](docs/game-presets.md).
 
 ## CSV labels and encoding
 
@@ -81,7 +81,7 @@ Choose **Load CSV** to load the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALA
 
 `_Rename.csv` adds search substitutions using the engine's `replacement,token` syntax. For example, `ABL:0,focus` lets you search for `[[focus]]`, and `0,skill` lets you search for `ABL:[[skill]]`. The expanded search is shown below the search box. Use a variable name, label, numeric index, or a reference such as `TA:3:2:1` within the selected scope. Tokens are case-sensitive; each rule runs once in import order, with the first definition retained on conflicts. Substitution applies only to search input. It does not alter CSV names or save values, and expressions or dynamic character selectors such as `TARGET` are not evaluated.
 
-CSV imports are limited to a total of 64 MiB per session. Metadata stays in memory and is cleared when another save opens successfully. See [CSV syntax and source evidence](docs/csv-metadata.md) for supported fields, escaped commas, and limits.
+CSV imports are limited to a total of 64 MiB per session. Metadata is cleared when another save opens successfully and is restored with the session if local recovery is enabled. See [CSV syntax and source evidence](docs/csv-metadata.md) for supported fields, escaped commas, and limits.
 
 Text encoding detection tries UTF-8 first, then CP932/Shift-JIS. Some byte sequences are valid in both encodings. If text looks wrong, select the correct **Read encoding** and choose **Reopen with selected encoding**. Reopening discards edits after confirmation. The encoding selection also applies to subsequently loaded CSV files.
 
@@ -106,21 +106,29 @@ Out-of-range integers, characters unavailable in the original text encoding, res
 
 ## Planned support
 
-Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, normal text/binary character duplication/deletion, character CSV name metadata, and `_Rename.csv` search substitutions are implemented. Remaining work includes:
+Unsupported features are being addressed incrementally. Binary array resizing, binary variable addition/deletion, normal text/binary character duplication/deletion, character CSV name metadata, `_Rename.csv` search substitutions, and optional local session recovery are implemented. Remaining work includes:
 
 - Character creation without copying, and individual text variable addition/deletion.
 - Text array resizing and format conversion, with explicit size information where required.
 - EM/EM+EE-specific formats, with separate format evidence and fixtures.
-- Optional local session recovery, offline reopening/PWA, and a `file://` entry point.
+- Offline reopening/PWA and a `file://` entry point.
 - ERB/ERH execution, which requires a separate execution design.
 
 These items remain unsupported until implemented and verified. This list does not imply a delivery date.
 
+## Local session recovery
+
+**Save work in this browser** is off by default. Turn it on to automatically save one workspace in this browser and restore it when you refresh or return to the same site. This includes the original file, applied value and structure edits, undo state, imported CSV data, read encoding, game preset, search, selected scope/variable, and page. Unapplied input in an open dialog is not saved. Opening another save successfully replaces the stored workspace; a failed open keeps it.
+
+Wait for **Saved in this browser** before leaving. Turning recovery off asks for confirmation and deletes the stored workspace while leaving your open work in memory. Storage errors leave live edits available and retain the last committed recovery; use **Retry saving** or download your work. If another tab changes or deletes recovery, stale tabs stop saving rather than overwrite it.
+
+Recovery uses IndexedDB in the current browser profile and site path; it does not sync between browsers or devices. The recovery journal is limited to 100,000 operations and 128 MiB including the original file and imported CSVs. If this limit is reached, download the edited save and reopen it to start a new workspace. Browser data deletion, storage eviction, or closing a private browsing session can remove recovery, so keep downloaded backups. Recovery does not provide offline reopening or PWA installation.
+
 ## Privacy and session data
 
-Save and CSV contents stay in browser memory. The app has no upload API, analytics, remote fonts, or CDN dependencies, and does not store your work in cookies, localStorage, or IndexedDB.
+Save and CSV contents stay in browser memory unless you enable local session recovery, which also stores them in this browser's IndexedDB. The app has no upload API, analytics, remote fonts, or CDN dependencies. It does not use cookies or localStorage, and language preference remains in the URL.
 
-After the app loads, editing, CSV loading, and downloading work without a network connection. Refreshing or closing the page discards your session, so download changes first. Offline reopening/PWA installation and opening the HTML directly through `file://` are not supported.
+After the app loads, editing, CSV loading, downloading, and enabled local saving work without a network connection. Without local recovery, refreshing or closing the page discards your session. Offline reopening/PWA installation and opening the HTML directly through `file://` are not supported.
 
 ## Further reading and credits
 

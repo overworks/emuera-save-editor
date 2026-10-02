@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ArrowDownToLine, ArrowRight, ArrowUpRight, Braces, Check, CheckCheck, ChevronLeft, ChevronRight, CircleHelp, FileCode2, FilePlus2, FileText, FolderOpen, Hash, Layers3, ListFilter, LoaderCircle, LockKeyhole, Pencil, RotateCcw, Search, ShieldCheck, Table2, Upload, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { rpc } from './client';
+import { getRecoveryStatus, rpc, subscribeRecovery } from './client';
+import type { RestoredSession } from './worker';
 import type { CharacterSummary, NewVariable, Page, ReferenceChange, Row, Summary, VariableRow, VariableSummary } from './core/editor';
 import type { EncodingOption } from './core/model';
 import { MAX_FILE_BYTES, SaveError } from './core/model';
@@ -32,7 +33,11 @@ export function App() {
   const [changedOnly, setChangedOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [encoding, setEncoding] = useState<EncodingOption>('auto');
-  const [busy, setBusy] = useState<MessageKey>();
+  const [busy, setBusy] = useState<MessageKey | undefined>('restoringSession');
+  const [ready, setReady] = useState(false);
+  const [storageBusy, setStorageBusy] = useState(false);
+  const [recoveryChoice, setRecoveryChoice] = useState<boolean>();
+  const recovery = useSyncExternalStore(subscribeRecovery, getRecoveryStatus);
   const [error, setError] = useState<Message>();
   const [notice, setNotice] = useState<Message>();
   const [warnings, setWarnings] = useState<Message[]>([]);
@@ -45,13 +50,38 @@ export function App() {
   const [help, setHelp] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const csvInput = useRef<HTMLInputElement>(null);
-  const lastFile = useRef<File | undefined>(undefined);
+  const pendingFile = useRef<File | undefined>(undefined);
   const dragDepth = useRef(0);
   // Rows belong to a save revision and filter selection, including during debounce.
   const query = useMemo(() => ({ summary, parameters: { scope, variableId, search, changedOnly, page, labelMatches: presetSearchMatches(preset, search, t) } }), [summary, scope, variableId, search, changedOnly, page, preset, t]);
   const [queryResult, setQueryResult] = useState<{ source: typeof query; page: Page }>();
   const results = queryResult?.page ?? emptyPage;
   const querying = !!summary && queryResult?.source !== query;
+
+  useEffect(() => {
+    let active = true;
+    rpc<RestoredSession>({ type: 'initialize', path: new URL('.', window.location.href).pathname }).then(result => {
+      if (!active) return;
+      setSummary(result.summary); setWarnings(result.warnings);
+      setEncoding(result.view.encoding); setPresetId(result.view.presetId);
+      setScope(result.view.scope); setVariableId(result.view.variableId); setSearch(result.view.search);
+      setChangedOnly(result.view.changedOnly); setPage(result.view.page);
+      if (result.summary) setNotice({ key: 'sessionRestored' });
+    }).catch(e => { if (active) setError(messageOf(e)); }).finally(() => {
+      if (active) { setBusy(undefined); setReady(true); }
+    });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!ready || !summary) return;
+    void rpc({ type: 'view', view: { encoding, presetId, scope, variableId, search, changedOnly, page } }).catch(e => setError(messageOf(e)));
+  }, [ready, summary, encoding, presetId, scope, variableId, search, changedOnly, page]);
+  // File drops can arrive while IndexedDB is still checking for saved work.
+  useEffect(() => {
+    if (!ready || !pendingFile.current) return;
+    const file = pendingFile.current; pendingFile.current = undefined;
+    void openFile(file);
+  }, [ready]);
 
   useEffect(() => {
     if (!query.summary) return;
@@ -64,23 +94,37 @@ export function App() {
     return () => { active = false; clearTimeout(timer); };
   }, [query]);
   useEffect(() => {
-    if (!summary?.changes) return;
+    if (!(summary?.changes && recovery.state !== 'saved') && recovery.state !== 'saving' && !(summary && recovery.enabled && recovery.state === 'error')) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [summary?.changes]);
+  }, [summary, recovery.enabled, recovery.state]);
 
   function chooseScope(next: number | 'all') { setScope(next); setVariableId(undefined); setPage(0); }
-  async function openFile(file: File) {
+  async function openFile(file?: File) {
+    if (!ready) { if (file) pendingFile.current = file; return; }
     if (busy) return;
     if (summary?.changes && !window.confirm(t('confirmOpen'))) return;
     setBusy('readingSave'); setError(undefined); setNotice(undefined);
     try {
-      if (file.size > MAX_FILE_BYTES) throw new SaveError('error.fileSize');
-      const next = await rpc<Summary>({ type: 'open', filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()), encoding });
-      lastFile.current = file; setSummary(next); setQueryResult(undefined); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]); setPresetId('');
+      if (file && file.size > MAX_FILE_BYTES) throw new SaveError('error.fileSize');
+      const next = await rpc<Summary>(file ? { type: 'open', filename: file.name, bytes: new Uint8Array(await file.arrayBuffer()), encoding } : { type: 'reopen', encoding });
+      setSummary(next); setQueryResult(undefined); chooseScope(-1); setSearch(''); setChangedOnly(false); setWarnings([]); setPresetId('');
     } catch (e) { setError(messageOf(e, 'error.fileRead')); }
     finally { setBusy(undefined); }
+  }
+  async function changeRecovery(enabled: boolean) {
+    if (!enabled && !window.confirm(t('confirmDisableRecovery'))) return;
+    setRecoveryChoice(enabled); setStorageBusy(true);
+    try { await rpc({ type: 'recovery', enabled }); }
+    catch (e) { setError(messageOf(e)); }
+    finally { setRecoveryChoice(undefined); setStorageBusy(false); }
+  }
+  async function retryRecovery() {
+    setStorageBusy(true);
+    try { await rpc({ type: 'retryRecovery' }); }
+    catch (e) { setError(messageOf(e)); }
+    finally { setStorageBusy(false); }
   }
   async function demo() {
     try {
@@ -115,7 +159,9 @@ export function App() {
     finally { setBusy(undefined); }
   }
   async function revert(row?: Row) {
+    if (busy) return;
     if (!row && !window.confirm(t('confirmRevert'))) return;
+    setBusy('revertingChanges');
     try {
       const next = await rpc<Summary>(row ? 'character' in row ? { type: row.type === 'cloneCharacter' ? 'deleteCharacter' : 'restoreCharacter', scope: row.character.scope }
         : row.type === 'add' ? { type: 'deleteVariable', id: row.variableId }
@@ -126,6 +172,7 @@ export function App() {
       if (!next.variables.some(v => v.id === variableId && (!v.deleted || changedOnly))) setVariableId(undefined);
     }
     catch (e) { setError(messageOf(e)); }
+    finally { setBusy(undefined); }
   }
   const charactersByScope = new Map(summary?.characters.map(c => [c.scope, c]));
   function scopeName(position: number, name = '') {
@@ -165,6 +212,13 @@ export function App() {
       {busy && <div className="message loading"><LoaderCircle size={17} className="spin" />{t(busy)}…</div>}
     </div>
     <main>
+      <section className="recovery-panel" aria-label={t('localRecovery')}>
+        <div className="recovery-description"><strong>{t('localRecovery')}</strong><p>{t('recoveryHint')}</p></div>
+        <div className="recovery-controls"><label><input type="checkbox" checked={recoveryChoice ?? recovery.enabled} disabled={!ready || storageBusy || !!busy} onChange={e => void changeRecovery(e.target.checked)} />{t('enableRecovery')}</label>
+          <span className={`recovery-status ${recovery.state === 'error' ? 'failed' : ''}`} role="status">{t(recovery.state === 'saved' ? 'recoverySaved' : recovery.state === 'saving' ? 'recoverySaving' : recovery.state === 'empty' ? 'recoveryEmpty' : recovery.state === 'error' ? 'recoveryFailed' : recovery.state === 'loading' ? 'restoringSession' : 'recoveryOff')}</span>
+        </div>
+        {recovery.error && <div className="recovery-error" role="alert"><span>{message(recovery.error)}</span>{recovery.enabled && summary && <button className="text-button" onClick={() => void retryRecovery()} disabled={storageBusy || !!busy}>{t('retryRecovery')}</button>}</div>}
+      </section>
       {!summary ? <section className="welcome">
         <div className="welcome-intro"><div className="eyebrow"><span />{t('welcomeEyebrow')}</div>
           <h1>{t('welcomeTitle')}<br /><span>{t('welcomeAccent')}</span></h1>
@@ -192,7 +246,7 @@ export function App() {
           {activeCharacters.length > 0 && <><div className="sidebar-label character-label">{t('characters')} <span>{number(activeCharacters.length)}</span></div><div className="character-list">{activeCharacters.map(c => <button key={c.scope} className={`nav-item character ${scope === c.scope ? 'selected' : ''}`} onClick={() => chooseScope(c.scope)}><span className="avatar">{scopeName(c.scope, c.name).slice(0, 1)}</span><span className="character-name">{scopeName(c.scope, c.name)}<small>#{c.index} · NO {c.no}</small>{c.csv && <small title={c.csv.filename}>CSV · {c.csv.fields.NAME || c.csv.fields.CALLNAME || c.csv.fields.NICKNAME || c.csv.filename}</small>}</span></button>)}</div></>}
           <div className="labels-card"><span className="labels-icon"><Table2 size={19} /></span><strong>{t('gameCsv')}</strong><p className="csv-counts">{hasCsv ? <>{summary.labels > 0 && <span>{t('labelCount', { count: summary.labels })}</span>}{summary.characterLabels > 0 && <span>{t('characterCsvCount', { count: summary.characterLabels })}</span>}{summary.renames > 0 && <span>{t('renameCount', { count: summary.renames })}</span>}</> : t('labelsHint')}</p><button className="button secondary small full" onClick={() => csvInput.current?.click()} disabled={!!busy}><FilePlus2 size={15} />{hasCsv ? t('addLabels') : t('loadCsv')}</button></div>
           <label className="sidebar-encoding">{t('readEncoding')}<select value={encoding} onChange={e => setEncoding(e.target.value as EncodingOption)}><EncodingOptions /></select></label>
-          {summary.format === 'text' && <button className="text-button reread" disabled={!!busy} onClick={() => lastFile.current && void openFile(lastFile.current)}>{t('reread')}</button>}
+          {summary.format === 'text' && <button className="text-button reread" disabled={!!busy} onClick={() => void openFile()}>{t('reread')}</button>}
         </aside><div className="editor-main">
           <div className="editor-title"><div><h2>{title}</h2><span>{t('variableCount', { count: selectedVariables.length })}</span></div><div className="segmented"><button className={!changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(false); setPage(0); if (selectedVariable?.deleted) setVariableId(undefined); }}>{t('showAll')}</button><button className={changedOnly ? 'active' : ''} onClick={() => { setChangedOnly(true); chooseScope('all'); }}>{t('changes')} <span>{number(summary.changes)}</span></button></div></div>
           {summary.fileType === 'normal' && selectedCharacter && !selectedCharacter.deleted && <div className="character-toolbar"><span>{t('characterPosition')} <code>#{selectedCharacter.index} · NO {selectedCharacter.no}</code></span><div><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'clone', character: selectedCharacter })}>{t('cloneCharacter')}</button><button className="button secondary small" disabled={!!busy || querying} onClick={() => setCharacterAction({ type: 'delete', character: selectedCharacter })}>{t('deleteCharacter')}</button></div></div>}

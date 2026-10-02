@@ -47,7 +47,7 @@ Character shortcuts require an explicitly selected stable character ID. Shared s
 
 The UI sends matching coordinates with the query; the Worker remains locale-independent. Metadata matches extend label searches inside existing filters and the 50-row page limit. They do not enumerate an entire sparse binary array. Text matches are restricted to existing `textSpans`. Qualified references and `_Rename.csv` expansion retain their existing interpretation.
 
-CSV names remain primary, with preset guidance shown separately. Both remain searchable. Switching presets preserves edits, CSV metadata, and search text. A successful save open clears the selection; a failed open preserves it. Presets and translations are bundled, work offline after loading, and are not persisted.
+CSV names remain primary, with preset guidance shown separately. Both remain searchable. Switching presets preserves edits, CSV metadata, and search text. A successful save open clears the selection; a failed open preserves it. Presets and translations are bundled and work offline after loading. The selected preset is included in optional local session recovery; language preference remains only in the URL.
 
 ## Validation scope
 
