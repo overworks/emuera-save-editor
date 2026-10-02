@@ -2,7 +2,7 @@
 
 **English** · [한국어](README.ko.md) · [日本語](README.ja.md)
 
-Read and edit Emuera saves in your browser. The app supports text and binary saves, including `global.sav`, without uploading your files or requiring a backend, account, or database. The interface supports English, Korean, and Japanese.
+Read and edit Emuera saves in your browser. The app supports text and binary saves, including `global.sav`, without uploading your files or requiring a backend, account, or database server. The interface supports English, Korean, and Japanese.
 
 ## Getting started
 
@@ -138,4 +138,4 @@ After the app loads, editing, CSV loading, downloading, and enabled local saving
 
 Original project code is licensed under the [MIT License](LICENSE). Third-party code retains its original license terms.
 
-This is an independent project, not an official Emuera application. Runtime libraries include React (MIT), encoding-japanese (MIT), and Lucide (ISC). The original Emuera copyright notice and license for the test sources are preserved in [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt).
+This is an independent project, not an official Emuera application. Runtime libraries include React (MIT), encoding-japanese (MIT), and Lucide (ISC). The GitHub icon comes from Primer Octicons under the [MIT License](public/github-mark.LICENSE.txt). The original Emuera copyright notice and license for the test sources are preserved in [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt).

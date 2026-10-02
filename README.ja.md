@@ -2,7 +2,7 @@
 
 [English](README.md) · [한국어](README.ko.md) · **日本語**
 
-ブラウザーで Emuera のセーブデータを読み込み、編集できるアプリです。`global.sav` を含むテキスト形式・バイナリ形式のセーブに対応し、ファイルのアップロードやバックエンド、アカウント、データベースは不要です。アプリの画面は英語・韓国語・日本語に対応しています。
+ブラウザーで Emuera のセーブデータを読み込み、編集できるアプリです。`global.sav` を含むテキスト形式・バイナリ形式のセーブに対応し、ファイルのアップロードやバックエンド、アカウント、別途のデータベースサーバーは不要です。アプリの画面は英語・韓国語・日本語に対応しています。
 
 ## はじめに
 
@@ -138,4 +138,4 @@ CSV の読み込みは 1 セッションで合計 64 MiB までです。別の�
 
 本プロジェクト独自のコードは [MIT License](LICENSE) で提供されます。外部コードには、それぞれ元のライセンス条件が適用されます。
 
-本アプリは独立したプロジェクトであり、Emuera 公式アプリではありません。実行時ライブラリとして React（MIT）、encoding-japanese（MIT）、Lucide（ISC）を使用しています。テストソースに含まれる元の Emuera の著作権表示とライセンスは [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt) に保存しています。
+本アプリは独立したプロジェクトであり、Emuera 公式アプリではありません。実行時ライブラリとして React（MIT）、encoding-japanese（MIT）、Lucide（ISC）を使用しています。GitHub アイコンは Primer Octicons の [MIT License](public/github-mark.LICENSE.txt) に基づいて使用しています。テストソースに含まれる元の Emuera の著作権表示とライセンスは [upstream/LICENSE.txt](tests/reference/upstream/LICENSE.txt) に保存しています。

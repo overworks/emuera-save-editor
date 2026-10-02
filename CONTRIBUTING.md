@@ -94,6 +94,8 @@ English is the default and canonical language for maintained project documentati
 
 Update each README and its two translations together when content changes. Add language-switch links to README files and link to the matching language where a translation exists. Links to `AGENTS.md` and `CONTRIBUTING.md` always point to the English files. Keep commands, file paths, format markers, and actual UI labels unchanged; translated explanations may accompany them. Apply the same convention to new README files. Preserve third-party source comments and legal notices in their original form.
 
+Avoid ASCII tildes in prose ranges: GitHub Markdown can treat matching single tildes as strikethrough. Use an en dash (`1–3`), words, or a locale-appropriate range mark instead. Escape a literal tilde (`\~`) or place it in code spans when needed. Check rendered Markdown as well as the source when reviewing formatting.
+
 Keep usage, features, privacy, and user-visible limitations in README files; contributor workflows in CONTRIBUTING files; and repository navigation and implementation invariants in AGENTS files. Link between them instead of repeating full sections.
 
 ## Static hosting
