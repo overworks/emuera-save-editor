@@ -1,10 +1,12 @@
-# Emuera Save Studio
+# 🎮 Emuera Save Studio
 
 **English** · [한국어](README.ko.md) · [日本語](README.ja.md)
 
+**✏️ Text & binary editing · 🌐 English / 한국어 / 日本語 · 🔒 Files stay in your browser**
+
 Read and edit Emuera saves in your browser. The app supports text and binary saves, including `global.sav`, without uploading your files or requiring a backend, account, or database server. The interface supports English, Korean, and Japanese.
 
-## Getting started
+## 🚀 Getting started
 
 [Open Emuera Save Studio](https://overworks.github.io/emuera-save-editor/) in your browser. No installation is required. Choose **Explore sample** to try a synthetic save before opening your own file.
 
@@ -19,13 +21,13 @@ Open the URL printed in the terminal.
 
 Use a recent desktop browser. Browser tests currently cover Chromium at desktop and mobile screen sizes.
 
-## Language
+## 🌐 Language
 
 Use the language selector in the header to switch between **English**, **한국어**, and **日本語**. The app follows your browser's preferred supported language and falls back to English. A language in the URL (`?lang=en`, `?lang=ko`, or `?lang=ja`) takes priority. Selecting a language updates that URL, so the choice survives a refresh and can be bookmarked without cookies or localStorage.
 
 Switching languages preserves your open save, edits, search, and CSV labels. Buttons, help, errors, and notifications are translated; filenames, variable names, character names, CSV labels, and save values stay as written. All translations are bundled, so switching works offline after the app loads.
 
-## Editing a save
+## ✏️ Editing a save
 
 1. Open one `save*.sav` or `global.sav` file with the file picker, or drop it in the save drop area. Once a save is open, drop another onto the filename bar to replace it.
 2. Select shared/global variables or a character. Search by variable name, CSV label, or exact array index. Use `1:2:3` for a multidimensional index.
@@ -35,7 +37,7 @@ Switching languages preserves your open save, edits, search, and CSV labels. But
 
 The app downloads a separate file and does not overwrite your original. Downloads retain the original format and encoding. With no changes, the download is byte-for-byte identical to the input. Edited files are checked before downloading, but the app cannot validate a game's rules or the meaning of each value.
 
-## Resizing a binary array
+## 📐 Resizing a binary array
 
 Open a binary save, select an array in **Variable group**, and choose **Resize array**. Enter each dimension's length, then apply the change. Integer and string arrays with one to three dimensions can grow or shrink, including to zero cells, without changing their rank. The total must stay within 100 million cells.
 
@@ -43,7 +45,7 @@ Existing values keep their coordinates. New cells contain `0` or empty text. Cel
 
 This changes the size stored in the save. The game still uses its own declared array sizes and may ignore extra cells. Text saves do not declare complete array sizes, so text arrays cannot be resized.
 
-## Adding and deleting binary variables
+## 🧩 Adding and deleting binary variables
 
 Open a binary save and choose **Add variable**. Enter the name, scope, integer/string type, and scalar or array dimensions. Shared/global variables support scalars and one to three dimensions. For a character, choose built-in variables (scalars or one to two dimensions) or script-defined `#DIM`/`#DIMS` variables (one to two dimensions). New values start at `0` or empty text; zero-length arrays are allowed, with the same 100-million-cell limit.
 
@@ -53,7 +55,7 @@ To remove a variable, select it in **Variable group** and choose **Delete variab
 
 These operations change records in the save. They do not add or remove declarations in the game: names, types, scope, and dimensions must match what the game expects, and missing or unknown records may be ignored or use game defaults. See [binary variable semantics and source evidence](docs/binary-variables.md).
 
-## Adding and deleting text extension variables
+## 📝 Adding and deleting text extension variables
 
 In a text save with an extension marker, use **Add variable**, or select a named extension variable in **Variable group** and choose **Delete variable**. Select the built-in or user-defined group that matches the game's declaration. The dialog offers only the types and ranks available in that save version. Fixed-order base variables such as `MONEY`, `NAME`, and `GLOBAL` cannot be added or deleted individually. A legacy save without an extension marker cannot gain new variables.
 
@@ -67,7 +69,7 @@ New arrays store every specified cell explicitly as `0` or empty text. The entir
 
 **Changes**, individual undo, **Revert all**, character copies, and optional local recovery include these operations. Deleted original records keep their hidden edits, while cancelling a new record removes its edits. Unchanged records, separators, BOM, encoding, and existing line endings are preserved; new records use their group's line ending. Undoing every change restores the exact original bytes. Adding a record does not declare or initialize a game variable. See [text variable semantics and source evidence](docs/text-variables.md).
 
-## Duplicating and deleting characters
+## 👥 Duplicating and deleting characters
 
 In a normal text or binary save, select a character and choose **Duplicate character**. An independent copy is appended with the character's current values, array sizes, and variables, including your edits. Its `NAME` and `NO` are copied too; edit them afterward if needed. `NO` is separate from the displayed save position (`#0`, `#1`, …) and does not have to be unique. Empty characters can be copied, but this feature cannot create a character without an existing character to copy. It does not initialize characters from game scripts or CSV files.
 
@@ -79,7 +81,7 @@ Text operations copy or remove both the fixed-order base block and the character
 
 See [binary character semantics](docs/binary-characters.md) and [text character semantics](docs/text-characters.md) for source evidence, reference rules, and verification limits.
 
-## Game presets
+## 🎮 Game presets
 
 Choose **Game preset** in the editor for localized names, explanations, and shortcuts to frequently used fields. The catalog covers **eraTWKR Textbung (based on TWKR 1.20)**, **eratohoK 1.29.3**, **eraMegaten KR Rev.143**, and **ShinEraTenseiP 0.5.9**. Each shows the source edition and a link to its variable definitions. Game code and version suggest a candidate; when related games share a code and the version cannot distinguish them, choose manually. Code/version differences are shown, and matching identifiers do not establish compatibility with every patch or engine fork.
 
@@ -87,7 +89,7 @@ Expand **Frequently used fields** and select a character to enable their shortcu
 
 Selecting or switching presets leaves save values and edits intact. The selection survives a language change or failed file open and clears when another save opens successfully. It is also restored when local session recovery is enabled. Presets work offline after the app loads. They provide a small set of field guides, not complete game data or automatic value changes. See [preset mappings, source editions, and verification limits](docs/game-presets.md).
 
-## CSV labels and encoding
+## 🏷️ CSV labels and encoding
 
 After opening a save, drop the game's `ABL.csv`, `TALENT.csv`, `EXP.csv`, `PALAM.csv`, `ITEM.csv`, `FLAG.csv`, `CFLAG.csv`, or other supported standard label files into **Game CSV labels**. You can drop multiple CSV files at once or select them with **Load CSV**. The dashed save and CSV areas handle their respective file types; dropping elsewhere does not open a file. Labels help you find values by name; they are optional and do not change save data or array sizes. When labels conflict, the first loaded name is kept and a warning is shown.
 
@@ -99,7 +101,7 @@ CSV imports are limited to a total of 64 MiB per session. Metadata is cleared wh
 
 Text encoding detection tries UTF-8 first, then CP932/Shift-JIS. Some byte sequences are valid in both encodings. If text looks wrong, select the correct **Read encoding** and choose **Reopen with selected encoding**. Reopening discards edits after confirmation. The encoding selection also applies to subsequently loaded CSV files.
 
-## Compatibility
+## ✅ Compatibility
 
 The baseline is standard **Emuera 1.824**, preserved at commit [`85db4cbd`](https://github.com/0x00000FF/Emuera/tree/85db4cbd5eb2efe6c5b5449ada351a21a20db60b).
 
@@ -118,7 +120,7 @@ Creating characters without copying an existing character, fixed-order text base
 
 Out-of-range integers, characters unavailable in the original text encoding, reserved text delimiters, line breaks in text values, and malformed or unsupported files are rejected. Automated compatibility checks use synthetic saves generated and read by the original engine's save code. A user has also confirmed loading, editing, and exporting actual save data. This report does not establish in-game reloading or compatibility with every game or fork, or validate array resizing, variable addition/deletion, and character duplication/deletion with real saves.
 
-## Planned support
+## 🗺️ Planned support
 
 Unsupported features are being addressed incrementally. Binary array resizing, binary and text extension variable addition/deletion, normal text/binary character duplication/deletion, character CSV name metadata, `_Rename.csv` search substitutions, optional local session recovery, and offline reopening/PWA installation are implemented. Remaining work includes:
 
@@ -130,7 +132,7 @@ Unsupported features are being addressed incrementally. Binary array resizing, b
 
 These items remain unsupported until implemented and verified. This list does not imply a delivery date.
 
-## Local session recovery
+## 💾 Local session recovery
 
 **Save work in this browser** is off by default. Turn it on to automatically save one workspace in this browser and restore it when you refresh or return to the same site. This includes the original file, applied value and structure edits, undo state, imported CSV data, read encoding, game preset, search, selected scope/variable, and page. Unapplied input in an open dialog is not saved. Opening another save successfully replaces the stored workspace; a failed open keeps it.
 
@@ -138,7 +140,7 @@ Wait for **Saved in this browser** before leaving. Turning recovery off asks for
 
 Recovery uses IndexedDB in the current browser profile and site path; it does not sync between browsers or devices. The recovery journal is limited to 100,000 operations and 128 MiB including the original file and imported CSVs. If this limit is reached, download the edited save and reopen it to start a new workspace. Browser data deletion, storage eviction, or closing a private browsing session can remove recovery, so keep downloaded backups. Offline app preparation and session recovery are separate: enable recovery to restore your work when reopening offline.
 
-## Offline use and installation
+## 📴 Offline use and installation
 
 Visit the production app while connected and wait for **Ready to reopen offline** below the recovery controls. This browser can then reopen the app, including its sample and all three languages, without a connection. The first visit needs a connection. Offline access requires HTTPS or localhost and a browser that permits service workers and app storage; the development server does not prepare offline access. Browser data deletion or storage eviction can remove the cached app. Expand **Offline use & installation** to retry preparation or check for updates.
 
@@ -148,13 +150,13 @@ Where supported, choose **Install app** or use the browser's install menu. On iP
 
 When **An app update is ready** appears, apply any unfinished dialog input, then save or download your work in every app window. Close all tabs and installed windows for this app and reopen it to use the new version. An update never automatically reloads an editing window; refreshing one tab alone may leave the previous version active while other app windows remain open. Failed update preparation keeps the previous offline version available. Direct `file://` execution remains unsupported.
 
-## Privacy and session data
+## 🔒 Privacy and session data
 
 Save and CSV contents stay in browser memory unless you enable local session recovery, which also stores them in this browser's IndexedDB. Offline preparation automatically caches only shipped app files, including the synthetic sample, in the browser's Cache Storage; imported saves and CSVs are not placed in that cache. The app has no upload API, analytics, remote fonts, or CDN dependencies. It does not use cookies or localStorage, and language preference remains in the URL.
 
 After the app loads, editing, CSV loading, downloading, and enabled local saving work without a network connection. Offline reopening is available after app preparation completes. Without local recovery, refreshing or closing the page discards your session even if the app is installed.
 
-## Further reading and credits
+## 📚 Further reading and credits
 
 - [Contributing](CONTRIBUTING.md): development setup, checks, and static hosting.
 - [Agent context](AGENTS.md): code map and save-format invariants.
